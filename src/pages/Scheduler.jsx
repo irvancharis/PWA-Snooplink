@@ -260,7 +260,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }
                   <div style={{ width: '48px', height: '48px', background: '#eef2ff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem' }}>
                     <ImageIcon size={24} color="var(--primary)" />
                   </div>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Klik untuk pilih gambar</span>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Klik untuk pilih media</span>
                 </div>
               )}
             </label>
