@@ -9,6 +9,14 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }
   const [time, setTime] = useState('');
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
+  
+  // YouTube specific state
+  const [ytTitle, setYtTitle] = useState('');
+  const [ytTags, setYtTags] = useState('');
+  const [ytPrivacy, setYtPrivacy] = useState('public');
+  const [ytThumbnailPreview, setYtThumbnailPreview] = useState(null);
+  const [ytThumbnailFile, setYtThumbnailFile] = useState(null);
+
   const [uploading, setUploading] = useState(false);
   const [showMediaModal, setShowMediaModal] = useState(false);
 
@@ -63,9 +71,14 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!selectedAccountId) return alert("Harap hubungkan akun sosial media terlebih dahulu!");
-    if (!content || !date || !time) return alert("Harap isi semua kolom!");
     
     const account = accounts.find(a => a.id === selectedAccountId);
+    
+    if (account.platform === 'youtube') {
+      if (!ytTitle || !content || !date || !time) return alert("Harap isi Judul, Deskripsi, Tanggal, dan Waktu!");
+    } else {
+      if (!content || !date || !time) return alert("Harap isi Konten, Tanggal, dan Waktu!");
+    }
     
     setUploading(true);
     await onSchedule({ 
@@ -77,10 +90,19 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }
       mediaUrl: preview || "",
       mediaType: file ? file.type : (preview?.startsWith('data:video') ? 'video/mp4' : 'image/jpeg'),
       fileName: file ? file.name : (posts?.find(p => p.mediaUrl === preview)?.fileName || 'Media_Galeri'),
-      file: file // Pass the file object for Storage upload
+      file: file, // Pass the file object for Storage upload
+      ...(account.platform === 'youtube' && {
+        ytTitle,
+        ytTags,
+        ytPrivacy,
+        ytThumbnail: ytThumbnailPreview,
+        ytThumbnailFile: ytThumbnailFile
+      })
     });
     setUploading(false);
   };
+
+  const selectedPlatform = accounts.find(a => a.id === selectedAccountId)?.platform || '';
 
   return (
     <div className="card" style={{ maxWidth: '900px', margin: '0 auto', padding: '3rem', background: '#fff' }}>
@@ -91,16 +113,60 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }
       
       <form className="scheduler-form" onSubmit={handleSubmit}>
         <div>
+          {selectedPlatform === 'youtube' && (
+            <div className="input-group" style={{ marginBottom: '1.5rem' }}>
+              <label className="stat-label">Judul Video YouTube <span style={{color: 'red'}}>*</span></label>
+              <input 
+                type="text" 
+                placeholder="Masukkan judul video..." 
+                style={{ marginTop: '0.5rem', background: '#f8fafc', width: '100%' }}
+                value={ytTitle}
+                onChange={(e) => setYtTitle(e.target.value)}
+                required
+              />
+            </div>
+          )}
+          
           <div className="input-group">
-            <label className="stat-label">Konten Postingan</label>
+            <label className="stat-label">
+              {selectedPlatform === 'youtube' ? 'Deskripsi Video YouTube' : 'Konten Postingan'} <span style={{color: 'red'}}>*</span>
+            </label>
             <textarea 
-              rows={8} 
-              placeholder="Tulis sesuatu yang menarik di sini..." 
+              rows={selectedPlatform === 'youtube' ? 5 : 8} 
+              placeholder={selectedPlatform === 'youtube' ? 'Tulis deskripsi video Anda di sini...' : 'Tulis sesuatu yang menarik di sini...'}
               style={{ marginTop: '0.5rem', background: '#f8fafc' }}
               value={content}
               onChange={(e) => setContent(e.target.value)}
+              required
             ></textarea>
           </div>
+
+          {selectedPlatform === 'youtube' && (
+            <div style={{ display: 'flex', gap: '1.5rem', marginTop: '1.5rem' }}>
+              <div className="input-group" style={{ flex: 2, marginBottom: 0 }}>
+                <label className="stat-label">Tags (Pisahkan dengan koma)</label>
+                <input 
+                  type="text" 
+                  placeholder="vlog, tutorial, tips" 
+                  style={{ marginTop: '0.5rem', background: '#f8fafc', width: '100%' }}
+                  value={ytTags}
+                  onChange={(e) => setYtTags(e.target.value)}
+                />
+              </div>
+              <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                <label className="stat-label">Visibilitas</label>
+                <select 
+                  style={{ marginTop: '0.5rem', background: '#f8fafc', width: '100%' }}
+                  value={ytPrivacy}
+                  onChange={(e) => setYtPrivacy(e.target.value)}
+                >
+                  <option value="public">Publik</option>
+                  <option value="unlisted">Unlisted</option>
+                  <option value="private">Privat</option>
+                </select>
+              </div>
+            </div>
+          )}
           
           <div className="input-group" style={{ marginTop: '2rem' }}>
             <label className="stat-label">Pilih Akun Platform</label>
@@ -189,6 +255,47 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }
               )}
             </label>
           </div>
+          
+          {selectedPlatform === 'youtube' && (
+            <div className="input-group" style={{ marginTop: '1.5rem' }}>
+              <label className="stat-label">Upload Thumbnail Kustom (Opsional)</label>
+              <label style={{ 
+                border: '2px dashed #cbd5e1', 
+                borderRadius: '16px', 
+                height: '140px', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                marginTop: '0.5rem',
+                cursor: 'pointer',
+                background: '#f1f5f9',
+                overflow: 'hidden',
+                position: 'relative'
+              }}>
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  style={{ display: 'none' }} 
+                  onChange={(e) => {
+                    const f = e.target.files[0];
+                    if (f) {
+                      setYtThumbnailFile(f);
+                      const r = new FileReader();
+                      r.onloadend = () => setYtThumbnailPreview(r.result);
+                      r.readAsDataURL(f);
+                    }
+                  }} 
+                />
+                {ytThumbnailPreview ? (
+                  <img src={ytThumbnailPreview} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', color: '#64748b', fontSize: '0.85rem', fontWeight: 600 }}>
+                    <FileImage size={18} /> Klik untuk pilih thumbnail
+                  </div>
+                )}
+              </label>
+            </div>
+          )}
 
           <div style={{ display: 'flex', gap: '1.5rem' }}>
             <div className="input-group" style={{ flex: 1 }}>
