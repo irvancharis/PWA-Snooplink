@@ -199,7 +199,16 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
                   <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1.5rem' }}>
                     <div className="input-group" style={{ flex: 1.5 }}>
                       <label className="stat-label">NAMA AKUN</label>
-                      <input type="text" placeholder="Fanspage Bisnis Utama" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} style={{ width: '100%' }} />
+                      <input 
+                        type="text" 
+                        placeholder={
+                          formData.platform === 'facebook' ? "Fanspage Bisnis Utama" :
+                          formData.platform === 'instagram' ? "Akun Bisnis Instagram" :
+                          formData.platform === 'tiktok' ? "Akun TikTok Shop/Kreator" :
+                          "Channel YouTube Utama"
+                        } 
+                        value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} style={{ width: '100%' }} 
+                      />
                     </div>
                     <div className="input-group" style={{ flex: 1 }}>
                       <label className="stat-label">PLATFORM</label>
@@ -214,7 +223,16 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
 
                   <div className="input-group" style={{ marginBottom: '2.5rem' }}>
                     <label className="stat-label">USERNAME SOSIAL (@HANDLE)</label>
-                    <input type="text" placeholder="@username_anda" value={formData.handle} onChange={e => setFormData({...formData, handle: e.target.value})} style={{ width: '100%' }} />
+                    <input 
+                      type="text" 
+                      placeholder={
+                        formData.platform === 'facebook' ? "@halaman_fb" :
+                        formData.platform === 'instagram' ? "@akun_ig" :
+                        formData.platform === 'tiktok' ? "@tiktok_id" :
+                        "@channel_yt"
+                      }
+                      value={formData.handle} onChange={e => setFormData({...formData, handle: e.target.value})} style={{ width: '100%' }} 
+                    />
                   </div>
 
                   <div style={{ padding: '2.5rem', background: '#f8fafc', borderRadius: '28px', border: '1px solid #e2e8f0', position: 'relative' }}>
