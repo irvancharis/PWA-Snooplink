@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Image as ImageIcon, Send, Grid, X, Video, FileImage } from 'lucide-react';
 
 const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }) => {
@@ -216,18 +217,25 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }
       </form>
 
       {/* MEDIA SELECTION MODAL */}
-      {showMediaModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
-          <div className="card" style={{ width: '100%', maxWidth: '800px', height: '80vh', display: 'flex', flexDirection: 'column', padding: '2rem', background: '#fff', position: 'relative' }}>
-            <button 
-              onClick={() => setShowMediaModal(false)}
-              style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
-            >
-              <X size={24} />
-            </button>
-            <h3 style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: '1.5rem', color: 'var(--text-main)' }}>Pilih dari Galeri</h3>
+      {showMediaModal && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999, padding: '2rem' }} onClick={() => setShowMediaModal(false)}>
+          <div className="card" style={{ width: '100%', maxWidth: '900px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', padding: 0, background: '#ffffff', position: 'relative', borderRadius: '24px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }} onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div style={{ padding: '1.5rem 2rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+              <div>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>Pilih dari Galeri</h3>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '0.2rem 0 0 0' }}>Gunakan foto dan video yang pernah Anda unggah</p>
+              </div>
+              <button 
+                onClick={() => setShowMediaModal(false)}
+                style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#fff', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-muted)', transition: '0.2s' }}
+                className="btn-hover-bg"
+              >
+                <X size={20} />
+              </button>
+            </div>
             
-            <div className="grid" style={{ overflowY: 'auto', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1.5rem', padding: '0.5rem' }}>
+            <div className="grid" style={{ overflowY: 'auto', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1.5rem', padding: '2rem' }}>
               {posts && posts.filter(p => p.mediaUrl).map(post => (
                  <div 
                    key={post.id} 
@@ -276,9 +284,14 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }
                 box-shadow: 0 10px 20px rgba(0,0,0,0.1) !important;
                 border-color: var(--primary) !important;
               }
+              .btn-hover-bg:hover {
+                background: #f1f5f9 !important;
+                color: var(--text-main) !important;
+              }
             `}} />
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
