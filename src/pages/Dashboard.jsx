@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Image as ImageIcon, Video, FileImage, X, RefreshCw, TrendingUp, Calendar, Zap } from 'lucide-react';
 
-const Dashboard = ({ posts, onUseMedia }) => {
+const Dashboard = ({ posts: allPosts, onUseMedia }) => {
+  const posts = allPosts.filter(p => p.status !== 'Deleted');
   const [selectedPost, setSelectedPost] = useState(null);
 
   const isVideo = (post) => {

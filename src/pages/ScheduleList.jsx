@@ -71,6 +71,7 @@ const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia }) => {
   };
 
   const filteredPosts = posts.filter(post => {
+    if (post.status === 'Deleted') return false;
     const matchesSearch = post.content?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'All' || post.status === statusFilter;
     return matchesSearch && matchesStatus;

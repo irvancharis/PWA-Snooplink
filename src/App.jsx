@@ -228,7 +228,7 @@ function App() {
   const handleDeletePost = async (postId) => {
     if (!window.confirm("Apakah Anda yakin ingin menghapus jadwal ini?")) return;
     try {
-      await deleteDoc(doc(db, 'posts', postId));
+      await updateDoc(doc(db, 'posts', postId), { status: 'Deleted' });
     } catch (error) {
       alert("Gagal menghapus: " + error.message);
     }
