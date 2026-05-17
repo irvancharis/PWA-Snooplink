@@ -10,13 +10,22 @@ import {
   Video,
   FileImage,
   X,
-  RefreshCw
+  RefreshCw,
+  Edit,
+  Save
 } from 'lucide-react';
 
-const ScheduleList = ({ posts, onDelete, onUseMedia }) => {
+const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [selectedPost, setSelectedPost] = useState(null);
+  
+  // Edit States
+  const [editingPost, setEditingPost] = useState(null);
+  const [editContent, setEditContent] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editTime, setEditTime] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const isVideo = (post) => {
     if (post.mediaType?.startsWith('video/')) return true;
@@ -29,10 +38,35 @@ const ScheduleList = ({ posts, onDelete, onUseMedia }) => {
     if (!url) return '';
     if (url.includes('drive.google.com') && url.includes('id=')) {
       const id = url.split('id=')[1].split('&')[0];
-      // Menggunakan endpoint thumbnail dengan resolusi tinggi (w1000)
       return `https://drive.google.com/thumbnail?id=${id}&sz=w1000`;
     }
     return url;
+  };
+
+  const handleEditClick = (post) => {
+    setEditingPost(post);
+    setEditContent(post.content);
+    if (post.time) {
+      const [d, t] = post.time.split(' ');
+      setEditDate(d || '');
+      setEditTime(t || '');
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editContent || !editDate || !editTime) return alert("Harap isi semua kolom!");
+    setIsSaving(true);
+    try {
+      await onUpdate(editingPost.id, {
+        content: editContent,
+        time: `${editDate} ${editTime}`
+      });
+      setEditingPost(null);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const filteredPosts = posts.filter(post => {
@@ -43,9 +77,9 @@ const ScheduleList = ({ posts, onDelete, onUseMedia }) => {
 
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', gap: '1.5rem' }}>
-        <div style={{ display: 'flex', gap: '1rem', flex: 1 }}>
-          <div className="input-group" style={{ marginBottom: 0, flex: 1, position: 'relative', maxWidth: '400px' }}>
+      <div className="list-filters" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', gap: '1.5rem' }}>
+        <div className="list-filters-inner" style={{ display: 'flex', gap: '1rem', flex: 1 }}>
+          <div className="input-group search-group" style={{ marginBottom: 0, flex: 1, position: 'relative', maxWidth: '400px' }}>
             <input 
               type="text" 
               placeholder="Cari konten postingan..." 
@@ -154,6 +188,16 @@ const ScheduleList = ({ posts, onDelete, onUseMedia }) => {
                     </td>
                     <td style={{ padding: '1.2rem 1.5rem' }}>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        {post.status === 'Scheduled' && (
+                          <button 
+                            className="btn" 
+                            style={{ padding: '0.5rem', background: '#e0e7ff', color: 'var(--primary)', borderRadius: '8px' }}
+                            onClick={() => handleEditClick(post)}
+                            title="Edit Jadwal"
+                          >
+                            <Edit size={16} />
+                          </button>
+                        )}
                         <button 
                           className="btn" 
                           style={{ padding: '0.5rem', background: '#fee2e2', color: '#ef4444', borderRadius: '8px' }}
@@ -235,6 +279,50 @@ const ScheduleList = ({ posts, onDelete, onUseMedia }) => {
               >
                 <RefreshCw size={18} />
                 <span>Gunakan Lagi</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT MODAL */}
+      {editingPost && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '500px', padding: '2rem', background: '#fff', position: 'relative' }}>
+            <button 
+              onClick={() => setEditingPost(null)}
+              style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+            >
+              <X size={20} />
+            </button>
+            <h3 style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: '1.5rem', color: 'var(--text-main)' }}>Edit Jadwal Posting</h3>
+            
+            <div className="input-group" style={{ marginBottom: '1rem' }}>
+              <label className="stat-label">Konten Postingan</label>
+              <textarea 
+                rows={5} 
+                style={{ marginTop: '0.5rem', background: '#f8fafc' }}
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+              ></textarea>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
+              <div className="input-group" style={{ flex: 1 }}>
+                <label className="stat-label">Tanggal</label>
+                <input type="date" style={{ marginTop: '0.5rem', background: '#f8fafc' }} value={editDate} onChange={e => setEditDate(e.target.value)} />
+              </div>
+              <div className="input-group" style={{ flex: 1 }}>
+                <label className="stat-label">Waktu</label>
+                <input type="time" style={{ marginTop: '0.5rem', background: '#f8fafc' }} value={editTime} onChange={e => setEditTime(e.target.value)} />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+              <button className="btn" style={{ background: '#f1f5f9', color: 'var(--text-muted)' }} onClick={() => setEditingPost(null)}>Batal</button>
+              <button className="btn btn-primary" onClick={handleSaveEdit} disabled={isSaving}>
+                <Save size={18} />
+                <span>{isSaving ? 'Menyimpan...' : 'Simpan Perubahan'}</span>
               </button>
             </div>
           </div>

@@ -234,6 +234,15 @@ function App() {
     }
   };
 
+  const handleUpdatePost = async (postId, updatedData) => {
+    try {
+      await updateDoc(doc(db, 'posts', postId), updatedData);
+    } catch (error) {
+      alert("Gagal menyimpan perubahan: " + error.message);
+      throw error;
+    }
+  };
+
   if (authLoading) return (
     <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
       <Rocket size={48} color="var(--primary)" className="animate-bounce" />
@@ -299,7 +308,7 @@ function App() {
                 accounts={accounts}
               />
             )}
-            {activePage === 'queue' && <ScheduleList posts={posts} onDelete={handleDeletePost} onUseMedia={handleUseMedia} />}
+            {activePage === 'queue' && <ScheduleList posts={posts} onDelete={handleDeletePost} onUpdate={handleUpdatePost} onUseMedia={handleUseMedia} />}
             {activePage === 'accounts' && (
               <Accounts
                 accounts={accounts}

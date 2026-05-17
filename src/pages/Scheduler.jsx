@@ -66,7 +66,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts }) => {
         <p className="stat-label">Jadwalkan konten media sosial Anda dengan mudah</p>
       </div>
       
-      <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '3rem' }}>
+      <form className="scheduler-form" onSubmit={handleSubmit}>
         <div>
           <div className="input-group">
             <label className="stat-label">Konten Postingan</label>

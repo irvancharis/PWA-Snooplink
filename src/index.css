@@ -287,6 +287,12 @@ select {
 }
 
 @media (max-width: 768px) {
+  .mobile-menu-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
   .layout {
     flex-direction: column;
   }
@@ -338,9 +344,41 @@ select {
     grid-template-columns: 1fr;
   }
 
-  /* Make sure table containers can scroll horizontally */
+  /* Scheduler Form */
+  .scheduler-form {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2rem !important;
+  }
+  
+  .card[style*="padding: 3rem"] {
+    padding: 1.5rem !important;
+  }
+
+  /* Schedule List Filters */
+  .list-filters, .list-filters-inner {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  
+  .search-group {
+    max-width: 100% !important;
+  }
+  
+  .list-filters select {
+    width: 100% !important;
+  }
+  
   .table-container, .card > div[style*="overflow-x: auto"] {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    margin: 0 -1.5rem;
+    padding: 0 1.5rem;
   }
+}
+
+.scheduler-form {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 3rem;
 }
