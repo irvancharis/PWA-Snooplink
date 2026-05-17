@@ -38,11 +38,8 @@ const MediaLibrary = ({ posts, onUseMedia, onDelete }) => {
               {isVideo(post) ? <Video color="var(--primary)" /> : <FileImage color="#10b981" />}
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-main)', marginBottom: '0.2rem', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {post.content || (isVideo(post) ? 'Video Content' : 'Image Content')}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
-                {post.platform} • {post.time || 'N/A'}
+              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-main)', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {post.fileName || (isVideo(post) ? 'Video_Media' : 'Image_Media')}
               </div>
             </div>
             <div style={{ position: 'absolute', top: '0.8rem', right: '0.8rem' }}>
@@ -106,8 +103,8 @@ const MediaLibrary = ({ posts, onUseMedia, onDelete }) => {
 
             <div style={{ padding: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ flex: 1, marginRight: '2rem' }}>
-                <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '0.4rem' }}>Pratinjau Media</h3>
-                <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{selectedPost.content}</p>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '0.4rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '400px' }}>{selectedPost.fileName || 'Media Galeri'}</h3>
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Diunggah pada {selectedPost.time ? selectedPost.time.split(' ')[0] : 'N/A'}</p>
               </div>
               <div style={{ display: 'flex', gap: '1rem' }}>
                 <button 

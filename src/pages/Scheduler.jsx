@@ -76,6 +76,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }
       time: `${date} ${time}`, 
       mediaUrl: preview || "",
       mediaType: file ? file.type : (preview?.startsWith('data:video') ? 'video/mp4' : 'image/jpeg'),
+      fileName: file ? file.name : (posts?.find(p => p.mediaUrl === preview)?.fileName || 'Media_Galeri'),
       file: file // Pass the file object for Storage upload
     });
     setUploading(false);
@@ -260,12 +261,8 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }
                      )}
                    </div>
                    <div style={{ padding: '1rem' }}>
-                     <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: '1.4' }}>
-                       {post.content || 'Tanpa teks keterangan...'}
-                     </div>
-                     <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                       <span style={{ textTransform: 'capitalize' }}>{post.platform}</span>
-                       <span>{post.time ? post.time.split(' ')[0] : ''}</span>
+                     <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                       {post.fileName || 'Media_Galeri'}
                      </div>
                    </div>
                  </div>
