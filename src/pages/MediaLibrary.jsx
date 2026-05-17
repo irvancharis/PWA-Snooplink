@@ -24,15 +24,24 @@ const MediaLibrary = ({ posts, onUseMedia, onDelete }) => {
     return url;
   };
 
+  const uniqueMedia = [];
+  const seenUrls = new Set();
+  posts.forEach(post => {
+    if (post.mediaUrl && !seenUrls.has(post.mediaUrl)) {
+      seenUrls.add(post.mediaUrl);
+      uniqueMedia.push(post);
+    }
+  });
+
   return (
     <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1.5rem' }}>
-      {posts.filter(p => p.mediaUrl).length === 0 ? (
+      {uniqueMedia.length === 0 ? (
         <div className="card" style={{ gridColumn: '1/-1', textAlign: 'center', padding: '6rem', background: '#fff' }}>
           <ImageIcon size={64} style={{ opacity: 0.1, marginBottom: '1.5rem' }} />
           <p style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Belum ada media yang diunggah.</p>
         </div>
       ) : (
-        posts.filter(p => p.mediaUrl).map(post => (
+        uniqueMedia.map(post => (
           <div key={post.id} className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', border: '1px solid var(--border-color)', borderRadius: '16px', cursor: 'pointer', transition: '0.2s', position: 'relative' }} onClick={() => setSelectedPost(post)}>
             <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: isVideo(post) ? '#eef2ff' : '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {isVideo(post) ? <Video color="var(--primary)" /> : <FileImage color="#10b981" />}

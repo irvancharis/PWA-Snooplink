@@ -237,7 +237,27 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }
             </div>
             
             <div className="grid" style={{ overflowY: 'auto', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1.5rem', padding: '2rem' }}>
-              {posts && posts.filter(p => p.mediaUrl).map(post => (
+              {(() => {
+                const uniqueMedia = [];
+                const seenUrls = new Set();
+                (posts || []).forEach(post => {
+                  if (post.mediaUrl && !seenUrls.has(post.mediaUrl)) {
+                    seenUrls.add(post.mediaUrl);
+                    uniqueMedia.push(post);
+                  }
+                });
+                
+                if (uniqueMedia.length === 0) {
+                  return (
+                    <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '4rem 2rem', color: 'var(--text-muted)', background: '#f8fafc', borderRadius: '16px', border: '2px dashed var(--border-color)' }}>
+                      <ImageIcon size={64} style={{ opacity: 0.1, margin: '0 auto 1.5rem', color: 'var(--primary)' }} />
+                      <h4 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem' }}>Belum ada media</h4>
+                      <p style={{ fontSize: '0.9rem' }}>Galeri ini akan menampilkan foto dan video yang pernah Anda unggah sebelumnya.</p>
+                    </div>
+                  );
+                }
+
+                return uniqueMedia.map(post => (
                  <div 
                    key={post.id} 
                    onClick={() => { setPreview(post.mediaUrl); setFile(null); setShowMediaModal(false); }}
@@ -266,14 +286,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }
                      </div>
                    </div>
                  </div>
-              ))}
-              {(!posts || posts.filter(p => p.mediaUrl).length === 0) && (
-                <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '4rem 2rem', color: 'var(--text-muted)', background: '#f8fafc', borderRadius: '16px', border: '2px dashed var(--border-color)' }}>
-                  <ImageIcon size={64} style={{ opacity: 0.1, margin: '0 auto 1.5rem', color: 'var(--primary)' }} />
-                  <h4 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem' }}>Belum ada media</h4>
-                  <p style={{ fontSize: '0.9rem' }}>Galeri ini akan menampilkan foto dan video yang pernah Anda unggah sebelumnya.</p>
-                </div>
-              )}
+              ))})()}
             </div>
             <style dangerouslySetInnerHTML={{ __html: `
               .media-card-hover:hover {
