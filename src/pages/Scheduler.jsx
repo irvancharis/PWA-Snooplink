@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Image as ImageIcon, Send, Grid, X, Video, FileImage } from 'lucide-react';
+import { Image as ImageIcon, Send, Grid, X, Video, FileImage, CheckCircle2 } from 'lucide-react';
 
 const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }) => {
   const [content, setContent] = useState('');
@@ -112,67 +112,13 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }
       </div>
       
       <form className="scheduler-form" onSubmit={handleSubmit}>
-        <div>
-          {selectedPlatform === 'youtube' && (
-            <div className="input-group" style={{ marginBottom: '1.5rem' }}>
-              <label className="stat-label">Judul Video YouTube <span style={{color: 'red'}}>*</span></label>
-              <input 
-                type="text" 
-                placeholder="Masukkan judul video..." 
-                style={{ marginTop: '0.5rem', background: '#f8fafc', width: '100%' }}
-                value={ytTitle}
-                onChange={(e) => setYtTitle(e.target.value)}
-                required
-              />
-            </div>
-          )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
           
-          <div className="input-group">
-            <label className="stat-label">
-              {selectedPlatform === 'youtube' ? 'Deskripsi Video YouTube' : 'Konten Postingan'} <span style={{color: 'red'}}>*</span>
-            </label>
-            <textarea 
-              rows={selectedPlatform === 'youtube' ? 5 : 8} 
-              placeholder={selectedPlatform === 'youtube' ? 'Tulis deskripsi video Anda di sini...' : 'Tulis sesuatu yang menarik di sini...'}
-              style={{ marginTop: '0.5rem', background: '#f8fafc' }}
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              required
-            ></textarea>
-          </div>
-
-          {selectedPlatform === 'youtube' && (
-            <div style={{ display: 'flex', gap: '1.5rem', marginTop: '1.5rem' }}>
-              <div className="input-group" style={{ flex: 2, marginBottom: 0 }}>
-                <label className="stat-label">Tags (Pisahkan dengan koma)</label>
-                <input 
-                  type="text" 
-                  placeholder="vlog, tutorial, tips" 
-                  style={{ marginTop: '0.5rem', background: '#f8fafc', width: '100%' }}
-                  value={ytTags}
-                  onChange={(e) => setYtTags(e.target.value)}
-                />
-              </div>
-              <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
-                <label className="stat-label">Visibilitas</label>
-                <select 
-                  style={{ marginTop: '0.5rem', background: '#f8fafc', width: '100%' }}
-                  value={ytPrivacy}
-                  onChange={(e) => setYtPrivacy(e.target.value)}
-                >
-                  <option value="public">Publik</option>
-                  <option value="unlisted">Unlisted</option>
-                  <option value="private">Privat</option>
-                </select>
-              </div>
-            </div>
-          )}
-          
-          <div className="input-group" style={{ marginTop: '2rem' }}>
-            <label className="stat-label">Pilih Akun Platform</label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', marginTop: '0.8rem' }}>
+          <div className="input-group" style={{ margin: 0 }}>
+            <label className="stat-label" style={{ fontSize: '1rem', color: 'var(--primary)', borderBottom: '2px solid #eef2ff', paddingBottom: '0.8rem', marginBottom: '1.2rem', display: 'block' }}>1. Pilih Akun Tujuan</label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '1rem' }}>
               {accounts.length === 0 ? (
-                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', gridColumn: '1/-1', padding: '1rem', background: '#f8fafc', borderRadius: '12px' }}>
                   Belum ada akun yang terhubung. Silakan hubungkan akun di menu Accounts.
                 </div>
               ) : (
@@ -180,32 +126,96 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }
                   <div 
                     key={acc.id}
                     style={{ 
-                      padding: '0.6rem 1rem', 
+                      padding: '1rem', 
                       background: selectedAccountId === acc.id ? '#eef2ff' : '#f8fafc',
-                      border: `1px solid ${selectedAccountId === acc.id ? 'var(--primary)' : 'var(--border-color)'}`,
+                      border: `2px solid ${selectedAccountId === acc.id ? 'var(--primary)' : 'transparent'}`,
                       display: 'flex',
                       alignItems: 'center',
                       gap: '1rem',
                       cursor: 'pointer',
-                      borderRadius: '12px',
-                      transition: '0.2s'
+                      borderRadius: '16px',
+                      transition: 'all 0.2s ease',
+                      boxShadow: selectedAccountId === acc.id ? '0 4px 12px rgba(99, 102, 241, 0.15)' : 'none'
                     }}
                     onClick={() => setSelectedAccountId(acc.id)}
                   >
-                    <div className={`social-badge social-${acc.platform === 'facebook' ? 'fb' : (acc.platform === 'instagram' ? 'ig' : 'tt')}`} style={{ width: '32px', height: '32px', fontSize: '0.9rem' }}>
+                    <div className={`social-badge social-${acc.platform === 'facebook' ? 'fb' : (acc.platform === 'youtube' ? 'yt' : (acc.platform === 'instagram' ? 'ig' : 'tt'))}`} style={{ width: '40px', height: '40px', fontSize: '1.1rem' }}>
                        <i className={`fab fa-${acc.platform === 'facebook' ? 'facebook-f' : acc.platform}`}></i>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <span style={{ fontWeight: 700, fontSize: '0.9rem', color: selectedAccountId === acc.id ? 'var(--primary)' : 'var(--text-main)' }}>{acc.username || acc.name || 'Account'}</span>
-                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>{acc.platform}</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                      <span style={{ fontWeight: 800, fontSize: '0.95rem', color: selectedAccountId === acc.id ? 'var(--primary)' : 'var(--text-main)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{acc.username || acc.name || 'Account'}</span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'capitalize', fontWeight: 600 }}>{acc.platform}</span>
                     </div>
                     {selectedAccountId === acc.id && (
-                      <div style={{ marginLeft: 'auto', width: '10px', height: '10px', borderRadius: '50%', background: 'var(--primary)' }}></div>
+                      <div style={{ marginLeft: 'auto', color: 'var(--primary)' }}>
+                        <CheckCircle2 size={20} />
+                      </div>
                     )}
                   </div>
                 ))
               )}
             </div>
+          </div>
+
+          <div style={{ background: '#f8fafc', height: '1px', width: '100%' }}></div>
+
+          <div className="input-group" style={{ margin: 0 }}>
+            <label className="stat-label" style={{ fontSize: '1rem', color: 'var(--primary)', borderBottom: '2px solid #eef2ff', paddingBottom: '0.8rem', marginBottom: '1.2rem', display: 'block' }}>2. Lengkapi Konten</label>
+            
+            {selectedPlatform === 'youtube' && (
+              <div className="input-group" style={{ marginBottom: '1.5rem' }}>
+                <label className="stat-label">Judul Video YouTube <span style={{color: 'red'}}>*</span></label>
+                <input 
+                  type="text" 
+                  placeholder="Masukkan judul video..." 
+                  style={{ marginTop: '0.5rem', background: '#fff', width: '100%', border: '1px solid #e2e8f0' }}
+                  value={ytTitle}
+                  onChange={(e) => setYtTitle(e.target.value)}
+                  required
+                />
+              </div>
+            )}
+            
+            <div className="input-group">
+              <label className="stat-label">
+                {selectedPlatform === 'youtube' ? 'Deskripsi Video YouTube' : 'Konten Postingan'} <span style={{color: 'red'}}>*</span>
+              </label>
+              <textarea 
+                rows={selectedPlatform === 'youtube' ? 5 : 8} 
+                placeholder={selectedPlatform === 'youtube' ? 'Tulis deskripsi video Anda di sini...' : 'Tulis sesuatu yang menarik di sini...'}
+                style={{ marginTop: '0.5rem', background: '#fff', border: '1px solid #e2e8f0' }}
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                required
+              ></textarea>
+            </div>
+
+            {selectedPlatform === 'youtube' && (
+              <div style={{ display: 'flex', gap: '1.5rem', marginTop: '1.5rem' }}>
+                <div className="input-group" style={{ flex: 2, marginBottom: 0 }}>
+                  <label className="stat-label">Tags (Pisahkan dengan koma)</label>
+                  <input 
+                    type="text" 
+                    placeholder="vlog, tutorial, tips" 
+                    style={{ marginTop: '0.5rem', background: '#fff', width: '100%', border: '1px solid #e2e8f0' }}
+                    value={ytTags}
+                    onChange={(e) => setYtTags(e.target.value)}
+                  />
+                </div>
+                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                  <label className="stat-label">Visibilitas</label>
+                  <select 
+                    style={{ marginTop: '0.5rem', background: '#fff', width: '100%', border: '1px solid #e2e8f0' }}
+                    value={ytPrivacy}
+                    onChange={(e) => setYtPrivacy(e.target.value)}
+                  >
+                    <option value="public">Publik</option>
+                    <option value="unlisted">Unlisted</option>
+                    <option value="private">Privat</option>
+                  </select>
+                </div>
+              </div>
+            )}
           </div>
         </div>
         
