@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Plus, X, Info, ShieldCheck, HelpCircle, ExternalLink, Trash2, Edit3, MoreVertical, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { auth } from '../firebase';
+import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 
 const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
   const [showModal, setShowModal] = useState(false);
@@ -33,6 +35,29 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
     setShowModal(false);
     setIsEditing(false);
     setFormData({ name: '', platform: 'facebook', handle: '', pageId: '', accessToken: '', appId: '', apiSecret: '' });
+  };
+
+  const handleGoogleLogin = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.addScope('https://www.googleapis.com/auth/youtube.upload');
+      provider.addScope('https://www.googleapis.com/auth/youtube.readonly');
+      
+      const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      
+      if (credential && credential.accessToken) {
+        setFormData(prev => ({
+          ...prev, 
+          accessToken: credential.accessToken, 
+          pageId: result.user.uid,
+          name: prev.name || result.user.displayName || 'Channel YouTube'
+        }));
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Gagal login dengan Google: " + error.message);
+    }
   };
 
   const guides = {
@@ -242,31 +267,26 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
                     </div>
 
                     {formData.platform === 'youtube' ? (
-                      <div className="input-group" style={{ marginBottom: 0 }}>
-                        <label className="stat-label" style={{ fontSize: '0.75rem' }}>UPLOAD CREDENTIALS JSON (GOOGLE CLOUD)</label>
-                        <input 
-                          type="file" 
-                          accept=".json"
-                          onChange={(e) => {
-                            const file = e.target.files[0];
-                            if (file) {
-                              const reader = new FileReader();
-                              reader.onload = (evt) => {
-                                try {
-                                  JSON.parse(evt.target.result); // Validate JSON
-                                  setFormData({...formData, accessToken: evt.target.result, pageId: 'youtube-auth-json'});
-                                } catch(err) {
-                                  alert("File JSON tidak valid!");
-                                }
-                              };
-                              reader.readAsText(file);
-                            }
+                      <div className="input-group" style={{ marginBottom: 0, textAlign: 'center' }}>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                          Snooplink membutuhkan izin akses untuk mengunggah video ke YouTube Channel Anda.
+                        </p>
+                        <button 
+                          type="button"
+                          onClick={handleGoogleLogin}
+                          style={{ 
+                            background: '#fff', border: '1px solid #e2e8f0', color: 'var(--text-main)', 
+                            fontWeight: 700, padding: '1rem', borderRadius: '16px', cursor: 'pointer',
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.8rem',
+                            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', width: '100%', transition: '0.2s'
                           }}
-                          style={{ fontSize: '0.85rem', padding: '1.2rem', width: '100%', border: '2px dashed var(--primary)', borderRadius: '16px', cursor: 'pointer', background: '#f5f7ff', color: 'var(--primary)', fontWeight: 600 }} 
-                        />
-                        {formData.accessToken && formData.pageId === 'youtube-auth-json' && (
-                          <div style={{ marginTop: '0.8rem', color: '#10b981', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                            <CheckCircle2 size={16} /> File JSON Kredensial siap digunakan
+                        >
+                          <i className="fab fa-google" style={{ color: '#ea4335', fontSize: '1.2rem' }}></i>
+                          Login dengan Akun Google
+                        </button>
+                        {formData.accessToken && (
+                          <div style={{ marginTop: '1.2rem', color: '#10b981', fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: '#f0fdf4', padding: '0.8rem', borderRadius: '12px' }}>
+                            <CheckCircle2 size={18} /> Berhasil Terhubung ke Google!
                           </div>
                         )}
                       </div>
