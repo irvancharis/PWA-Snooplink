@@ -223,17 +223,50 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
                       <span style={{ fontWeight: 800, fontSize: '1rem', letterSpacing: '0.5px' }}>KREDENSIAL KEAMANAN</span>
                     </div>
 
-                    <div className="input-group" style={{ marginBottom: '1.5rem' }}>
-                      <label className="stat-label" style={{ fontSize: '0.75rem' }}>
-                        {formData.platform === 'tiktok' ? 'BUSINESS ACCOUNT ID' : (formData.platform === 'youtube' ? 'CHANNEL ID' : 'PAGE ID')}
-                      </label>
-                      <input type="text" placeholder="Masukkan ID numerik atau karakter..." value={formData.pageId} onChange={e => setFormData({...formData, pageId: e.target.value})} style={{ width: '100%' }} />
-                    </div>
+                    {formData.platform === 'youtube' ? (
+                      <div className="input-group" style={{ marginBottom: 0 }}>
+                        <label className="stat-label" style={{ fontSize: '0.75rem' }}>UPLOAD CREDENTIALS JSON (GOOGLE CLOUD)</label>
+                        <input 
+                          type="file" 
+                          accept=".json"
+                          onChange={(e) => {
+                            const file = e.target.files[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = (evt) => {
+                                try {
+                                  JSON.parse(evt.target.result); // Validate JSON
+                                  setFormData({...formData, accessToken: evt.target.result, pageId: 'youtube-auth-json'});
+                                } catch(err) {
+                                  alert("File JSON tidak valid!");
+                                }
+                              };
+                              reader.readAsText(file);
+                            }
+                          }}
+                          style={{ fontSize: '0.85rem', padding: '1.2rem', width: '100%', border: '2px dashed var(--primary)', borderRadius: '16px', cursor: 'pointer', background: '#f5f7ff', color: 'var(--primary)', fontWeight: 600 }} 
+                        />
+                        {formData.accessToken && formData.pageId === 'youtube-auth-json' && (
+                          <div style={{ marginTop: '0.8rem', color: '#10b981', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <CheckCircle2 size={16} /> File JSON Kredensial siap digunakan
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        <div className="input-group" style={{ marginBottom: '1.5rem' }}>
+                          <label className="stat-label" style={{ fontSize: '0.75rem' }}>
+                            {formData.platform === 'tiktok' ? 'BUSINESS ACCOUNT ID' : 'PAGE ID'}
+                          </label>
+                          <input type="text" placeholder="Masukkan ID numerik atau karakter..." value={formData.pageId} onChange={e => setFormData({...formData, pageId: e.target.value})} style={{ width: '100%' }} />
+                        </div>
 
-                    <div className="input-group" style={{ marginBottom: 0 }}>
-                      <label className="stat-label" style={{ fontSize: '0.75rem' }}>PAGE ACCESS TOKEN (PERMANENT)</label>
-                      <textarea rows={4} placeholder="Paste token di sini..." style={{ fontSize: '0.85rem', padding: '1.2rem', width: '100%', border: '1px solid #e2e8f0', borderRadius: '16px' }} value={formData.accessToken} onChange={e => setFormData({...formData, accessToken: e.target.value})} />
-                    </div>
+                        <div className="input-group" style={{ marginBottom: 0 }}>
+                          <label className="stat-label" style={{ fontSize: '0.75rem' }}>PAGE ACCESS TOKEN (PERMANENT)</label>
+                          <textarea rows={4} placeholder="Paste token di sini..." style={{ fontSize: '0.85rem', padding: '1.2rem', width: '100%', border: '1px solid #e2e8f0', borderRadius: '16px' }} value={formData.accessToken} onChange={e => setFormData({...formData, accessToken: e.target.value})} />
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   <div style={{ display: 'flex', gap: '1.2rem', marginTop: '3.5rem' }}>
