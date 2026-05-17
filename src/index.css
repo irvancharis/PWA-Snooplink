@@ -224,6 +224,7 @@ select {
 .social-fb { background: #1877f2; }
 .social-ig { background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%); }
 .social-tt { background: #000000; }
+.social-yt { background: #ff0000; }
 .grayscale { filter: grayscale(1); }
 
 /* Stats */

@@ -52,7 +52,7 @@ const MediaLibrary = ({ posts, onUseMedia, onDelete }) => {
               </div>
             </div>
             <div style={{ position: 'absolute', top: '0.8rem', right: '0.8rem' }}>
-              <div className={`social-badge social-${post.platform === 'instagram' ? 'ig' : (post.platform === 'tiktok' ? 'tt' : 'fb')}`} style={{ width: '24px', height: '24px', fontSize: '0.7rem' }}>
+              <div className={`social-badge social-${post.platform === 'instagram' ? 'ig' : (post.platform === 'tiktok' ? 'tt' : (post.platform === 'youtube' ? 'yt' : 'fb'))}`} style={{ width: '24px', height: '24px', fontSize: '0.7rem' }}>
                  <i className={`fab fa-${post.platform === 'facebook' ? 'facebook-f' : post.platform}`}></i>
               </div>
             </div>

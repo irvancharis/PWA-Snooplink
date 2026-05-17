@@ -141,7 +141,7 @@ const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia }) => {
                     </td>
                     <td style={{ padding: '1.2rem 1.5rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
-                        <div className={`social-badge social-${post.platform === 'facebook' ? 'fb' : (post.platform === 'instagram' ? 'ig' : 'tt')}`} style={{ width: '32px', height: '32px', fontSize: '0.8rem' }}>
+                        <div className={`social-badge social-${post.platform === 'facebook' ? 'fb' : (post.platform === 'instagram' ? 'ig' : (post.platform === 'youtube' ? 'yt' : 'tt'))}`} style={{ width: '32px', height: '32px', fontSize: '0.8rem' }}>
                            <i className={`fab fa-${post.platform === 'facebook' ? 'facebook-f' : post.platform}`}></i>
                         </div>
                         <div>

@@ -56,6 +56,16 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
         "Gunakan 'Business Account ID' dari profil bisnis Anda."
       ],
       link: "https://developers.tiktok.com/doc/about-tiktok-api/"
+    },
+    youtube: {
+      title: "Integrasi YouTube Data API",
+      steps: [
+        "Masuk ke Google Cloud Console.",
+        "Buat Project baru dan aktifkan YouTube Data API v3.",
+        "Buat kredensial OAuth 2.0 Client ID.",
+        "Generate Access Token menggunakan OAuth 2.0 Playground."
+      ],
+      link: "https://developers.google.com/youtube/v3/getting-started"
     }
   };
 
@@ -94,7 +104,7 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
               >
                 {/* Header Kartu: Icon & Tombol Aksi */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div className={`social-badge social-${acc.platform === 'instagram' ? 'ig' : (acc.platform === 'tiktok' ? 'tt' : 'fb')}`} style={{ width: '48px', height: '48px', borderRadius: '16px', boxShadow: '0 8px 16px -4px rgba(0,0,0,0.1)' }}>
+                  <div className={`social-badge social-${acc.platform === 'instagram' ? 'ig' : (acc.platform === 'tiktok' ? 'tt' : (acc.platform === 'youtube' ? 'yt' : 'fb'))}`} style={{ width: '48px', height: '48px', borderRadius: '16px', boxShadow: '0 8px 16px -4px rgba(0,0,0,0.1)' }}>
                     <i className={`fab fa-${acc.platform === 'facebook' ? 'facebook-f' : acc.platform}`} style={{ fontSize: '1.4rem' }}></i>
                   </div>
                   
@@ -197,6 +207,7 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
                         <option value="facebook">Facebook Page</option>
                         <option value="instagram">Instagram Business</option>
                         <option value="tiktok">TikTok Business</option>
+                        <option value="youtube">YouTube Channel</option>
                       </select>
                     </div>
                   </div>
@@ -214,9 +225,9 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
 
                     <div className="input-group" style={{ marginBottom: '1.5rem' }}>
                       <label className="stat-label" style={{ fontSize: '0.75rem' }}>
-                        {formData.platform === 'tiktok' ? 'BUSINESS ACCOUNT ID' : 'PAGE ID'}
+                        {formData.platform === 'tiktok' ? 'BUSINESS ACCOUNT ID' : (formData.platform === 'youtube' ? 'CHANNEL ID' : 'PAGE ID')}
                       </label>
-                      <input type="text" placeholder="Masukkan ID numerik..." value={formData.pageId} onChange={e => setFormData({...formData, pageId: e.target.value})} style={{ width: '100%' }} />
+                      <input type="text" placeholder="Masukkan ID numerik atau karakter..." value={formData.pageId} onChange={e => setFormData({...formData, pageId: e.target.value})} style={{ width: '100%' }} />
                     </div>
 
                     <div className="input-group" style={{ marginBottom: 0 }}>
@@ -250,10 +261,10 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
 
                       <div style={{ background: '#fff', padding: '2rem', borderRadius: '24px', border: '1px solid #e2e8f0', marginBottom: '2.5rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
                         <p style={{ fontWeight: 800, fontSize: '1rem', marginBottom: '1.5rem', color: 'var(--primary)' }}>
-                          {guides[formData.platform === 'tiktok' ? 'tiktok' : 'facebook'].title}
+                          {guides[formData.platform === 'tiktok' ? 'tiktok' : (formData.platform === 'youtube' ? 'youtube' : 'facebook')].title}
                         </p>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                          {guides[formData.platform === 'tiktok' ? 'tiktok' : 'facebook'].steps.map((step, idx) => (
+                          {guides[formData.platform === 'tiktok' ? 'tiktok' : (formData.platform === 'youtube' ? 'youtube' : 'facebook')].steps.map((step, idx) => (
                             <div key={idx} style={{ display: 'flex', gap: '1.2rem' }}>
                               <span style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 800, flexShrink: 0 }}>{idx + 1}</span>
                               <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.6', fontWeight: 500 }}>{step}</p>
@@ -262,7 +273,7 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
                         </div>
                       </div>
 
-                      <a href={guides[formData.platform === 'tiktok' ? 'tiktok' : 'facebook'].link} target="_blank" rel="noreferrer" className="btn" style={{ background: 'var(--text-main)', color: 'white', width: '100%', justifyContent: 'center', borderRadius: '18px', fontSize: '0.9rem', padding: '1rem' }}>
+                      <a href={guides[formData.platform === 'tiktok' ? 'tiktok' : (formData.platform === 'youtube' ? 'youtube' : 'facebook')].link} target="_blank" rel="noreferrer" className="btn" style={{ background: 'var(--text-main)', color: 'white', width: '100%', justifyContent: 'center', borderRadius: '18px', fontSize: '0.9rem', padding: '1rem' }}>
                         Dokumentasi Resmi <ExternalLink size={16} style={{ marginLeft: '0.6rem' }} />
                       </a>
                     </div>

@@ -92,7 +92,7 @@ const Dashboard = ({ posts: allPosts, onUseMedia }) => {
                       </div>
                     </td>
                     <td style={{ padding: '1.2rem 1.5rem' }}>
-                      <div className={`social-badge social-${post.platform === 'instagram' ? 'ig' : (post.platform === 'tiktok' ? 'tt' : 'fb')}`} style={{ width: '36px', height: '36px', fontSize: '1rem' }}>
+                      <div className={`social-badge social-${post.platform === 'instagram' ? 'ig' : (post.platform === 'tiktok' ? 'tt' : (post.platform === 'youtube' ? 'yt' : 'fb'))}`} style={{ width: '36px', height: '36px', fontSize: '1rem' }}>
                          <i className={`fab fa-${post.platform === 'facebook' ? 'facebook-f' : post.platform}`}></i>
                       </div>
                     </td>
