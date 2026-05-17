@@ -176,7 +176,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }
                 preview.startsWith('data:video') ? (
                   <video src={preview} controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
-                  <img src={preview} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <img src={getDirectLink(preview)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 )
               ) : (
                 <div style={{ textAlign: 'center' }}>
