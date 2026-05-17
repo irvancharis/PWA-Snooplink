@@ -135,7 +135,7 @@ function App() {
         });
 
         const result = await response.json();
-        console.log("Google Drive Response:", result);
+        console.log("Google Drive Response (Main Media):", result);
 
         const driveUrl = result.url || result.link || result.fileUrl || result.downloadUrl;
 
@@ -150,11 +150,49 @@ function App() {
         }
       }
 
-      const { file, ...cleanedData } = postData;
+      let finalYtThumbnailUrl = postData.ytThumbnail || null;
+
+      // Upload Custom Thumbnail to Google Drive if provided
+      if (postData.ytThumbnailFile) {
+        const fullThumbData = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.readAsDataURL(postData.ytThumbnailFile);
+        });
+
+        const thumbResponse = await fetch(GOOGLE_DRIVE_SCRIPT_URL, {
+          method: 'POST',
+          body: JSON.stringify({
+            data: fullThumbData,
+            file: fullThumbData,
+            blob: fullThumbData,
+            base64: fullThumbData,
+            content: fullThumbData,
+            filename: postData.ytThumbnailFile.name,
+            name: postData.ytThumbnailFile.name,
+            mimetype: postData.ytThumbnailFile.type,
+            type: postData.ytThumbnailFile.type
+          })
+        });
+
+        const thumbResult = await thumbResponse.json();
+        console.log("Google Drive Response (Thumbnail):", thumbResult);
+
+        const thumbDriveUrl = thumbResult.url || thumbResult.link || thumbResult.fileUrl || thumbResult.downloadUrl;
+        if (thumbDriveUrl) {
+          const thumbDriveIdMatch = thumbDriveUrl.match(/(?:\/d\/|id=)([\w-]+)/);
+          finalYtThumbnailUrl = thumbDriveIdMatch
+            ? `https://drive.google.com/uc?id=${thumbDriveIdMatch[1]}&export=download&confirm=t`
+            : thumbDriveUrl;
+        }
+      }
+
+      const { file, ytThumbnailFile, ...cleanedData } = postData;
 
       await addDoc(collection(db, 'posts'), {
         ...cleanedData,
         mediaUrl: finalMediaUrl,
+        ...(finalYtThumbnailUrl && { ytThumbnail: finalYtThumbnailUrl }),
         userId: user.id,
         createdAt: serverTimestamp(),
         status: 'Scheduled'
