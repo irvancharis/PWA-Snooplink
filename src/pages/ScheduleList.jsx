@@ -59,7 +59,8 @@ const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia }) => {
     try {
       await onUpdate(editingPost.id, {
         content: editContent,
-        time: `${editDate} ${editTime}`
+        time: `${editDate} ${editTime}`,
+        status: 'Scheduled'
       });
       setEditingPost(null);
     } catch (e) {
@@ -188,7 +189,7 @@ const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia }) => {
                     </td>
                     <td style={{ padding: '1.2rem 1.5rem' }}>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        {post.status === 'Scheduled' && (
+                        {post.status !== 'Published' && (
                           <button 
                             className="btn" 
                             style={{ padding: '0.5rem', background: '#e0e7ff', color: 'var(--primary)', borderRadius: '8px' }}
