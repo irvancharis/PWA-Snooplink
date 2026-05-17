@@ -259,3 +259,88 @@ select {
   border-radius: 50%;
   background: linear-gradient(45deg, var(--primary), var(--secondary));
 }
+
+/* Responsive Design */
+.mobile-menu-btn {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem;
+  margin-right: 1rem;
+  color: var(--text-main);
+}
+
+.sidebar-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 90;
+  display: none;
+}
+
+.sidebar-overlay.open {
+  display: block;
+}
+
+@media (max-width: 768px) {
+  .layout {
+    flex-direction: column;
+  }
+  
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.3s ease-in-out;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .main-content {
+    margin-left: 0;
+    padding: 1.5rem 1rem;
+    width: 100vw;
+  }
+
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .header > div:first-child {
+    display: flex;
+    align-items: center;
+    width: 100%;
+  }
+
+  .header-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 1rem !important;
+  }
+
+  .header-actions .input-group {
+    width: 100% !important;
+  }
+
+  .header-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Make sure table containers can scroll horizontally */
+  .table-container, .card > div[style*="overflow-x: auto"] {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}

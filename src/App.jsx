@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Rocket } from 'lucide-react';
+import { Plus, Search, Rocket, Menu } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 // Context
@@ -45,6 +45,7 @@ function App() {
   const [fetchingPosts, setFetchingPosts] = useState(false);
   const [accounts, setAccounts] = useState([]);
   const [prefilledMedia, setPrefilledMedia] = useState(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const GOOGLE_DRIVE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzDvdMcP5IVWgC95xWxANc0cUIPYvSwwRl16D_XhD9NsQP7-X5SMgVjkCj0TY-ETGaT_Q/exec';
 
@@ -245,18 +246,27 @@ function App() {
 
   return (
     <div className="layout">
-      <Sidebar activePage={activePage} onNavigate={setActivePage} onLogout={logout} />
+      <Sidebar 
+        activePage={activePage} 
+        onNavigate={setActivePage} 
+        onLogout={logout} 
+        isOpen={isSidebarOpen} 
+        onClose={() => setIsSidebarOpen(false)} 
+      />
 
       <main className="main-content">
         <header className="header">
           <div>
+            <button className="mobile-menu-btn" onClick={() => setIsSidebarOpen(true)}>
+              <Menu size={24} />
+            </button>
             <h1 style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>
               {activePage.charAt(0).toUpperCase() + activePage.slice(1)}
             </h1>
 
           </div>
 
-          <div style={{ display: 'flex', gap: '1.2rem', alignItems: 'center' }}>
+          <div className="header-actions" style={{ display: 'flex', gap: '1.2rem', alignItems: 'center' }}>
             <div className="input-group" style={{ marginBottom: 0, width: '280px', position: 'relative' }}>
               <input type="text" placeholder="Cari statistik..." style={{ paddingLeft: '2.8rem', background: '#fff', border: '1px solid #e2e8f0' }} />
               <Search size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
