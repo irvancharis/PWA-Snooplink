@@ -18,6 +18,19 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }
     return url.startsWith('data:video') || url.match(/\.(mp4|webm|ogg|mov|quicktime)(\?.*)?$/i);
   };
 
+  const getDirectLink = (url) => {
+    if (!url) return '';
+    try {
+      if (url.includes('drive.google.com') && url.includes('id=')) {
+        const match = url.match(/[?&]id=([^&]+)/);
+        if (match && match[1]) {
+          return `https://drive.google.com/thumbnail?id=${match[1]}&sz=w400`;
+        }
+      }
+    } catch (e) {}
+    return url;
+  };
+
   useEffect(() => {
     if (initialMedia) {
       setPreview(initialMedia);
@@ -214,27 +227,56 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }
             </button>
             <h3 style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: '1.5rem', color: 'var(--text-main)' }}>Pilih dari Galeri</h3>
             
-            <div className="grid" style={{ overflowY: 'auto', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem', paddingRight: '0.5rem' }}>
+            <div className="grid" style={{ overflowY: 'auto', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1.5rem', padding: '0.5rem' }}>
               {posts && posts.filter(p => p.mediaUrl).map(post => (
                  <div 
                    key={post.id} 
                    onClick={() => { setPreview(post.mediaUrl); setFile(null); setShowMediaModal(false); }}
-                   style={{ cursor: 'pointer', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'hidden', background: '#f8fafc', padding: '1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.8rem', transition: '0.2s' }}
-                   className="table-row-hover"
+                   style={{ cursor: 'pointer', borderRadius: '16px', border: '1px solid var(--border-color)', overflow: 'hidden', background: '#fff', position: 'relative', display: 'flex', flexDirection: 'column', transition: '0.3s', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
+                   className="media-card-hover"
                  >
-                   <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: isVideo(post) ? '#eef2ff' : '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                     {isVideo(post) ? <Video color="var(--primary)" /> : <FileImage color="#10b981" />}
+                   <div style={{ height: '140px', background: '#f1f5f9', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                     {!isVideo(post) ? (
+                       <img src={getDirectLink(post.mediaUrl)} alt="media" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                     ) : (
+                       <>
+                         <div style={{ width: '100%', height: '100%', background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                           <Video color="var(--primary)" size={48} opacity={0.5} />
+                         </div>
+                         <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                           <div style={{ background: 'rgba(255,255,255,0.9)', padding: '0.5rem', borderRadius: '50%' }}>
+                             <Video color="var(--primary)" size={20} />
+                           </div>
+                         </div>
+                       </>
+                     )}
                    </div>
-                   <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-main)', textAlign: 'center', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{post.content || 'Media'}</span>
+                   <div style={{ padding: '1rem' }}>
+                     <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: '1.4' }}>
+                       {post.content || 'Tanpa teks keterangan...'}
+                     </div>
+                     <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                       <span style={{ textTransform: 'capitalize' }}>{post.platform}</span>
+                       <span>{post.time ? post.time.split(' ')[0] : ''}</span>
+                     </div>
+                   </div>
                  </div>
               ))}
               {(!posts || posts.filter(p => p.mediaUrl).length === 0) && (
-                <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                  <ImageIcon size={48} style={{ opacity: 0.2, margin: '0 auto 1rem' }} />
-                  Belum ada media di galeri.
+                <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '4rem 2rem', color: 'var(--text-muted)', background: '#f8fafc', borderRadius: '16px', border: '2px dashed var(--border-color)' }}>
+                  <ImageIcon size={64} style={{ opacity: 0.1, margin: '0 auto 1.5rem', color: 'var(--primary)' }} />
+                  <h4 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem' }}>Belum ada media</h4>
+                  <p style={{ fontSize: '0.9rem' }}>Galeri ini akan menampilkan foto dan video yang pernah Anda unggah sebelumnya.</p>
                 </div>
               )}
             </div>
+            <style dangerouslySetInnerHTML={{ __html: `
+              .media-card-hover:hover {
+                transform: translateY(-4px);
+                box-shadow: 0 10px 20px rgba(0,0,0,0.1) !important;
+                border-color: var(--primary) !important;
+              }
+            `}} />
           </div>
         </div>
       )}
