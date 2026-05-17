@@ -1,20 +1,34 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Image as ImageIcon, Send } from 'lucide-react';
 
-const Scheduler = ({ onSchedule }) => {
+const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts }) => {
   const [content, setContent] = useState('');
-  const [platform, setPlatform] = useState('instagram');
+  const [selectedAccountId, setSelectedAccountId] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
 
+  useEffect(() => {
+    if (initialMedia) {
+      setPreview(initialMedia);
+    }
+    return () => onClearInitial?.();
+  }, [initialMedia]);
+
+  useEffect(() => {
+    // Auto-select first available account if none selected
+    if (accounts.length > 0 && (!selectedAccountId || !accounts.find(a => a.id === selectedAccountId))) {
+      setSelectedAccountId(accounts[0].id);
+    }
+  }, [accounts, selectedAccountId]);
+
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (selectedFile) {
-      if (selectedFile.size > 1024 * 1024) {
-        alert("File terlalu besar! Maksimal 1MB.");
+      if (selectedFile.size > 10 * 1024 * 1024) {
+        alert("File terlalu besar! Maksimal 10MB.");
         return;
       }
       setFile(selectedFile);
@@ -26,9 +40,22 @@ const Scheduler = ({ onSchedule }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!selectedAccountId) return alert("Harap hubungkan akun sosial media terlebih dahulu!");
     if (!content || !date || !time) return alert("Harap isi semua kolom!");
+    
+    const account = accounts.find(a => a.id === selectedAccountId);
+    
     setUploading(true);
-    await onSchedule({ content, platform, time: `${date} ${time}`, mediaUrl: preview || "" });
+    await onSchedule({ 
+      content, 
+      platform: account.platform, 
+      accountId: selectedAccountId,
+      accountName: account.username || account.name,
+      time: `${date} ${time}`, 
+      mediaUrl: preview || "",
+      mediaType: file ? file.type : (preview?.startsWith('data:video') ? 'video/mp4' : 'image/jpeg'),
+      file: file // Pass the file object for Storage upload
+    });
     setUploading(false);
   };
 
@@ -53,25 +80,49 @@ const Scheduler = ({ onSchedule }) => {
           </div>
           
           <div className="input-group" style={{ marginTop: '2rem' }}>
-            <label className="stat-label">Pilih Platform</label>
-            <div style={{ display: 'flex', gap: '1.2rem', marginTop: '0.8rem' }}>
-              {['facebook', 'instagram', 'tiktok'].map(p => (
-                <div 
-                  key={p}
-                  className={`social-badge social-${p === 'facebook' ? 'fb' : (p === 'instagram' ? 'ig' : 'tt')} ${platform === p ? '' : 'grayscale opacity-50'}`} 
-                  style={{ cursor: 'pointer', transform: platform === p ? 'scale(1.1)' : 'scale(1)', transition: '0.3s' }}
-                  onClick={() => setPlatform(p)}
-                >
-                  <i className={`fab fa-${p === 'facebook' ? 'facebook-f' : p}`}></i>
+            <label className="stat-label">Pilih Akun Platform</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', marginTop: '0.8rem' }}>
+              {accounts.length === 0 ? (
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                  Belum ada akun yang terhubung. Silakan hubungkan akun di menu Accounts.
                 </div>
-              ))}
+              ) : (
+                accounts.map(acc => (
+                  <div 
+                    key={acc.id}
+                    style={{ 
+                      padding: '0.6rem 1rem', 
+                      background: selectedAccountId === acc.id ? '#eef2ff' : '#f8fafc',
+                      border: `1px solid ${selectedAccountId === acc.id ? 'var(--primary)' : 'var(--border-color)'}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '1rem',
+                      cursor: 'pointer',
+                      borderRadius: '12px',
+                      transition: '0.2s'
+                    }}
+                    onClick={() => setSelectedAccountId(acc.id)}
+                  >
+                    <div className={`social-badge social-${acc.platform === 'facebook' ? 'fb' : (acc.platform === 'instagram' ? 'ig' : 'tt')}`} style={{ width: '32px', height: '32px', fontSize: '0.9rem' }}>
+                       <i className={`fab fa-${acc.platform === 'facebook' ? 'facebook-f' : acc.platform}`}></i>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontWeight: 700, fontSize: '0.9rem', color: selectedAccountId === acc.id ? 'var(--primary)' : 'var(--text-main)' }}>{acc.username || acc.name || 'Account'}</span>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>{acc.platform}</span>
+                    </div>
+                    {selectedAccountId === acc.id && (
+                      <div style={{ marginLeft: 'auto', width: '10px', height: '10px', borderRadius: '50%', background: 'var(--primary)' }}></div>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
           <div className="input-group">
-            <label className="stat-label">Unggah Media (Maks 1MB)</label>
+            <label className="stat-label">Unggah Media (Maks 10MB)</label>
             <label style={{ 
               border: '2.5px dashed #e2e8f0', 
               borderRadius: '20px', 
@@ -87,9 +138,13 @@ const Scheduler = ({ onSchedule }) => {
               position: 'relative',
               transition: '0.3s'
             }}>
-              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChange} />
+              <input type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handleFileChange} />
               {preview ? (
-                <img src={preview} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                preview.startsWith('data:video') ? (
+                  <video src={preview} controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <img src={preview} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                )
               ) : (
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ width: '48px', height: '48px', background: '#eef2ff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem' }}>

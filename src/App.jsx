@@ -18,22 +18,40 @@ import Analytics from './pages/Analytics';
 
 // Firebase Services
 import { db } from './firebase';
-import { 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  onSnapshot, 
-  addDoc, 
-  serverTimestamp 
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  onSnapshot,
+  addDoc,
+  deleteDoc,
+  updateDoc,
+  doc,
+  serverTimestamp
 } from 'firebase/firestore';
+import ScheduleList from './pages/ScheduleList';
 
 function App() {
   const { user, loading: authLoading, login, logout } = useAuth();
-  const [activePage, setActivePage] = useState('dashboard');
+  const [activePage, setActivePage] = useState(() => {
+    return localStorage.getItem('snooplink_active_page') || 'dashboard';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('snooplink_active_page', activePage);
+  }, [activePage]);
   const [posts, setPosts] = useState([]);
   const [fetchingPosts, setFetchingPosts] = useState(false);
   const [accounts, setAccounts] = useState([]);
+  const [prefilledMedia, setPrefilledMedia] = useState(null);
+
+  const GOOGLE_DRIVE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzDvdMcP5IVWgC95xWxANc0cUIPYvSwwRl16D_XhD9NsQP7-X5SMgVjkCj0TY-ETGaT_Q/exec';
+
+  const handleUseMedia = (url) => {
+    setPrefilledMedia(url);
+    setActivePage('scheduler');
+  };
 
   // Firestore Sync for Social Accounts
   useEffect(() => {
@@ -90,14 +108,59 @@ function App() {
   const handleSchedulePost = async (postData) => {
     if (!user) return;
     try {
+      let finalMediaUrl = postData.mediaUrl;
+
+      // Upload to Google Drive if a new file is selected
+      if (postData.file) {
+        const fullData = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.readAsDataURL(postData.file);
+        });
+
+        const response = await fetch(GOOGLE_DRIVE_SCRIPT_URL, {
+          method: 'POST',
+          body: JSON.stringify({
+            data: fullData,
+            file: fullData,
+            blob: fullData,
+            base64: fullData,
+            content: fullData,
+            filename: postData.file.name,
+            name: postData.file.name,
+            mimetype: postData.file.type,
+            type: postData.file.type
+          })
+        });
+
+        const result = await response.json();
+        console.log("Google Drive Response:", result);
+
+        const driveUrl = result.url || result.link || result.fileUrl || result.downloadUrl;
+
+        if (driveUrl) {
+          // Convert to direct download link for Drive
+          const driveIdMatch = driveUrl.match(/(?:\/d\/|id=)([\w-]+)/);
+          finalMediaUrl = driveIdMatch
+            ? `https://drive.google.com/uc?id=${driveIdMatch[1]}&export=download&confirm=t`
+            : driveUrl;
+        } else {
+          throw new Error("Gagal mendapatkan URL dari Google Drive. Respons: " + JSON.stringify(result));
+        }
+      }
+
+      const { file, ...cleanedData } = postData;
+
       await addDoc(collection(db, 'posts'), {
-        ...postData,
+        ...cleanedData,
+        mediaUrl: finalMediaUrl,
         userId: user.id,
         createdAt: serverTimestamp(),
         status: 'Scheduled'
       });
       setActivePage('dashboard');
     } catch (error) {
+      console.error(error);
       alert("Gagal menjadwalkan postingan: " + error.message);
     }
   };
@@ -115,6 +178,61 @@ function App() {
     }
   };
 
+  const handleDeleteAccount = async (accountId) => {
+    if (!window.confirm("Apakah Anda yakin ingin menghapus akun ini?")) return;
+    try {
+      await deleteDoc(doc(db, 'social_accounts', accountId));
+    } catch (error) {
+      alert("Gagal menghapus akun: " + error.message);
+    }
+  };
+
+  const handleUpdateAccount = async (accountId, updatedData) => {
+    try {
+      const { id, createdAt, userId, ...cleanData } = updatedData;
+      await updateDoc(doc(db, 'social_accounts', accountId), cleanData);
+      alert("Akun berhasil diperbarui.");
+    } catch (error) {
+      alert("Gagal memperbarui akun: " + error.message);
+    }
+  };
+
+  const handleDeleteMedia = async (post) => {
+    if (!window.confirm("Apakah Anda yakin ingin menghapus media ini dari database dan Google Drive?")) return;
+
+    try {
+      // 1. Hapus dari Google Drive jika itu link Drive
+      if (post.mediaUrl && post.mediaUrl.includes('id=')) {
+        // Ambil ID secara akurat
+        const urlObj = new URL(post.mediaUrl);
+        const fileId = urlObj.searchParams.get('id');
+
+        if (fileId) {
+          console.log("Sending delete request for ID:", fileId);
+          // Gunakan fetch sederhana agar tidak memicu download otomatis
+          const deleteUrl = `${GOOGLE_DRIVE_SCRIPT_URL}?action=delete&fileId=${fileId}`;
+          fetch(deleteUrl, { mode: 'no-cors' }).catch(e => console.log("Del req sent"));
+        }
+      }
+
+      // 2. Hapus dari Firestore
+      await deleteDoc(doc(db, 'posts', post.id));
+      alert("Media berhasil dihapus.");
+    } catch (error) {
+      console.error(error);
+      alert("Gagal menghapus media: " + error.message);
+    }
+  };
+
+  const handleDeletePost = async (postId) => {
+    if (!window.confirm("Apakah Anda yakin ingin menghapus jadwal ini?")) return;
+    try {
+      await deleteDoc(doc(db, 'posts', postId));
+    } catch (error) {
+      alert("Gagal menghapus: " + error.message);
+    }
+  };
+
   if (authLoading) return (
     <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
       <Rocket size={48} color="var(--primary)" className="animate-bounce" />
@@ -128,16 +246,16 @@ function App() {
   return (
     <div className="layout">
       <Sidebar activePage={activePage} onNavigate={setActivePage} onLogout={logout} />
-      
+
       <main className="main-content">
         <header className="header">
           <div>
             <h1 style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>
               {activePage.charAt(0).toUpperCase() + activePage.slice(1)}
             </h1>
-            <p className="stat-label">Masuk sebagai {user.email}</p>
+
           </div>
-          
+
           <div style={{ display: 'flex', gap: '1.2rem', alignItems: 'center' }}>
             <div className="input-group" style={{ marginBottom: 0, width: '280px', position: 'relative' }}>
               <input type="text" placeholder="Cari statistik..." style={{ paddingLeft: '2.8rem', background: '#fff', border: '1px solid #e2e8f0' }} />
@@ -162,10 +280,25 @@ function App() {
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.2 }}
           >
-            {activePage === 'dashboard' && <Dashboard posts={posts} />}
-            {activePage === 'scheduler' && <Scheduler onSchedule={handleSchedulePost} />}
-            {activePage === 'accounts' && <Accounts accounts={accounts} onAdd={handleAddAccount} />}
-            {activePage === 'media' && <MediaLibrary posts={posts} />}
+            {activePage === 'dashboard' && <Dashboard posts={posts} onUseMedia={handleUseMedia} />}
+            {activePage === 'scheduler' && (
+              <Scheduler
+                onSchedule={handleSchedulePost}
+                initialMedia={prefilledMedia}
+                onClearInitial={() => setPrefilledMedia(null)}
+                accounts={accounts}
+              />
+            )}
+            {activePage === 'queue' && <ScheduleList posts={posts} onDelete={handleDeletePost} onUseMedia={handleUseMedia} />}
+            {activePage === 'accounts' && (
+              <Accounts
+                accounts={accounts}
+                onAdd={handleAddAccount}
+                onDelete={handleDeleteAccount}
+                onUpdate={handleUpdateAccount}
+              />
+            )}
+            {activePage === 'media' && <MediaLibrary posts={posts} onUseMedia={handleUseMedia} onDelete={handleDeleteMedia} />}
             {activePage === 'analytics' && <Analytics />}
           </motion.div>
         </AnimatePresence>

@@ -2,6 +2,7 @@ import React from 'react';
 import { 
   LayoutDashboard, 
   Calendar, 
+  List,
   Image as ImageIcon, 
   Users, 
   LineChart, 
@@ -13,7 +14,8 @@ import {
 const Sidebar = ({ activePage, onNavigate, onLogout }) => {
   const menuItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { id: 'scheduler', icon: Calendar, label: 'Scheduler' },
+    { id: 'scheduler', icon: Calendar, label: 'Create Post' },
+    { id: 'queue', icon: List, label: 'List Schedule' },
     { id: 'media', icon: ImageIcon, label: 'Media Library' },
     { id: 'accounts', icon: Users, label: 'Accounts' },
     { id: 'analytics', icon: LineChart, label: 'Analytics' },
