@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { Plus, X, Info, ShieldCheck, HelpCircle, ExternalLink, Trash2, Edit3, MoreVertical, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { auth } from '../firebase';
-import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { signInWithPopup, GoogleAuthProvider, FacebookAuthProvider } from 'firebase/auth';
 
 const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
   const [showModal, setShowModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [fbPages, setFbPages] = useState([]);
+  const [isFbLoading, setIsFbLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '', platform: 'facebook', handle: '', pageId: '', accessToken: '', appId: '', apiSecret: ''
   });
@@ -57,6 +59,71 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
     } catch (error) {
       console.error(error);
       alert("Gagal login dengan Google: " + error.message);
+    }
+  };
+
+  const handleFacebookLogin = async () => {
+    try {
+      setIsFbLoading(true);
+      const provider = new FacebookAuthProvider();
+      provider.addScope('pages_manage_posts');
+      provider.addScope('pages_show_list');
+      provider.addScope('pages_read_engagement');
+      if (formData.platform === 'instagram') {
+        provider.addScope('instagram_basic');
+        provider.addScope('instagram_content_publish');
+      }
+      
+      const result = await signInWithPopup(auth, provider);
+      const credential = FacebookAuthProvider.credentialFromResult(result);
+      const userToken = credential.accessToken;
+      
+      const res = await fetch(`https://graph.facebook.com/v19.0/me/accounts?access_token=${userToken}`);
+      const data = await res.json();
+      
+      if (data.data && data.data.length > 0) {
+        setFbPages(data.data);
+      } else {
+        alert("Tidak ada Halaman Facebook yang ditemukan di akun ini.");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Gagal login dengan Facebook: " + error.message);
+    } finally {
+      setIsFbLoading(false);
+    }
+  };
+
+  const handlePageSelect = async (page) => {
+    if (formData.platform === 'instagram') {
+      setIsFbLoading(true);
+      try {
+        const res = await fetch(`https://graph.facebook.com/v19.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`);
+        const data = await res.json();
+        if (data.instagram_business_account) {
+          setFormData(prev => ({
+            ...prev,
+            accessToken: page.access_token,
+            pageId: data.instagram_business_account.id,
+            name: prev.name || `${page.name} (IG)`
+          }));
+          setFbPages([]);
+        } else {
+          alert("Halaman Facebook ini tidak terhubung dengan Akun Instagram Bisnis.");
+        }
+      } catch (err) {
+        alert("Gagal mengambil data Instagram.");
+      } finally {
+        setIsFbLoading(false);
+      }
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        accessToken: page.access_token,
+        pageId: page.id,
+        name: prev.name || page.name
+      }));
+      setFbPages([]);
     }
   };
 
@@ -290,17 +357,62 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
                           </div>
                         )}
                       </div>
+                    ) : formData.platform === 'facebook' || formData.platform === 'instagram' ? (
+                      <div className="input-group" style={{ marginBottom: 0, textAlign: 'center' }}>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                          Snooplink membutuhkan izin akses untuk mengelola {formData.platform === 'instagram' ? 'Instagram Bisnis' : 'Facebook Page'} Anda.
+                        </p>
+                        
+                        {!formData.accessToken && fbPages.length === 0 ? (
+                          <button 
+                            type="button"
+                            onClick={handleFacebookLogin}
+                            disabled={isFbLoading}
+                            style={{ 
+                              background: '#1877f2', border: 'none', color: '#fff', 
+                              fontWeight: 700, padding: '1rem', borderRadius: '16px', cursor: 'pointer',
+                              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.8rem',
+                              boxShadow: '0 4px 6px -1px rgba(24, 119, 242, 0.4)', width: '100%', transition: '0.2s',
+                              opacity: isFbLoading ? 0.7 : 1
+                            }}
+                          >
+                            <i className="fab fa-facebook-f" style={{ fontSize: '1.2rem' }}></i>
+                            {isFbLoading ? 'Memuat...' : 'Login dengan Facebook'}
+                          </button>
+                        ) : fbPages.length > 0 ? (
+                          <div style={{ textAlign: 'left', background: '#f5f7ff', padding: '1rem', borderRadius: '16px', border: '1px solid #e0e7ff' }}>
+                            <label className="stat-label" style={{ marginBottom: '0.5rem', display: 'block', color: 'var(--primary)' }}>PILIH HALAMAN {formData.platform === 'instagram' ? 'YANG TERHUBUNG KE IG' : ''}</label>
+                            <select 
+                              onChange={(e) => {
+                                const selected = fbPages.find(p => p.id === e.target.value);
+                                if(selected) handlePageSelect(selected);
+                              }} 
+                              style={{ width: '100%', padding: '0.8rem', borderRadius: '10px', border: '1px solid #c7d2fe' }}
+                              defaultValue=""
+                            >
+                              <option value="" disabled>-- Pilih Halaman --</option>
+                              {fbPages.map(p => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        ) : (
+                          <div style={{ marginTop: '0.5rem', color: '#10b981', fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: '#f0fdf4', padding: '0.8rem', borderRadius: '12px' }}>
+                            <CheckCircle2 size={18} /> Berhasil Terhubung ke {formData.name}!
+                          </div>
+                        )}
+                      </div>
                     ) : (
                       <>
                         <div className="input-group" style={{ marginBottom: '1.5rem' }}>
                           <label className="stat-label" style={{ fontSize: '0.75rem' }}>
-                            {formData.platform === 'tiktok' ? 'BUSINESS ACCOUNT ID' : 'PAGE ID'}
+                            BUSINESS ACCOUNT ID
                           </label>
                           <input type="text" placeholder="Masukkan ID numerik atau karakter..." value={formData.pageId} onChange={e => setFormData({...formData, pageId: e.target.value})} style={{ width: '100%' }} />
                         </div>
 
                         <div className="input-group" style={{ marginBottom: 0 }}>
-                          <label className="stat-label" style={{ fontSize: '0.75rem' }}>PAGE ACCESS TOKEN (PERMANENT)</label>
+                          <label className="stat-label" style={{ fontSize: '0.75rem' }}>ACCESS TOKEN (PERMANENT)</label>
                           <textarea rows={4} placeholder="Paste token di sini..." style={{ fontSize: '0.85rem', padding: '1.2rem', width: '100%', border: '1px solid #e2e8f0', borderRadius: '16px' }} value={formData.accessToken} onChange={e => setFormData({...formData, accessToken: e.target.value})} />
                         </div>
                       </>
