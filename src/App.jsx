@@ -47,7 +47,7 @@ function App() {
   const [prefilledMedia, setPrefilledMedia] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  const GOOGLE_DRIVE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzDvdMcP5IVWgC95xWxANc0cUIPYvSwwRl16D_XhD9NsQP7-X5SMgVjkCj0TY-ETGaT_Q/exec';
+  const GOOGLE_DRIVE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby_vsf3Ya5oFFISuPLjqH9WZ5vP5QMSqZvxfZNxgpF81vLV0paRwPUE28z60YUY8mfXKg/exec';
 
   const handleUseMedia = (url) => {
     setPrefilledMedia(url);
@@ -293,12 +293,12 @@ function App() {
 
   return (
     <div className="layout">
-      <Sidebar 
-        activePage={activePage} 
-        onNavigate={setActivePage} 
-        onLogout={logout} 
-        isOpen={isSidebarOpen} 
-        onClose={() => setIsSidebarOpen(false)} 
+      <Sidebar
+        activePage={activePage}
+        onNavigate={setActivePage}
+        onLogout={logout}
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
       />
 
       <main className="main-content">
