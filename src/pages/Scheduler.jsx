@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Image as ImageIcon, Send } from 'lucide-react';
+import { Image as ImageIcon, Send, Grid, X, Video, FileImage } from 'lucide-react';
 
-const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts }) => {
+const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }) => {
   const [content, setContent] = useState('');
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [date, setDate] = useState('');
@@ -9,6 +9,14 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts }) => {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [showMediaModal, setShowMediaModal] = useState(false);
+
+  const isVideo = (post) => {
+    if (post.mediaType?.startsWith('video/')) return true;
+    const url = post.mediaUrl;
+    if (!url) return false;
+    return url.startsWith('data:video') || url.match(/\.(mp4|webm|ogg|mov|quicktime)(\?.*)?$/i);
+  };
 
   useEffect(() => {
     if (initialMedia) {
@@ -122,7 +130,18 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts }) => {
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
           <div className="input-group">
-            <label className="stat-label">Unggah Media (Maks 10MB)</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <label className="stat-label">Pilih / Unggah Media</label>
+              <button 
+                type="button" 
+                className="btn" 
+                style={{ padding: '0.4rem 0.8rem', background: '#eef2ff', color: 'var(--primary)', fontSize: '0.75rem', borderRadius: '8px' }}
+                onClick={() => setShowMediaModal(true)}
+              >
+                <Grid size={14} />
+                Buka Galeri
+              </button>
+            </div>
             <label style={{ 
               border: '2.5px dashed #e2e8f0', 
               borderRadius: '20px', 
@@ -182,6 +201,43 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts }) => {
           </button>
         </div>
       </form>
+
+      {/* MEDIA SELECTION MODAL */}
+      {showMediaModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '800px', height: '80vh', display: 'flex', flexDirection: 'column', padding: '2rem', background: '#fff', position: 'relative' }}>
+            <button 
+              onClick={() => setShowMediaModal(false)}
+              style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+            >
+              <X size={24} />
+            </button>
+            <h3 style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: '1.5rem', color: 'var(--text-main)' }}>Pilih dari Galeri</h3>
+            
+            <div className="grid" style={{ overflowY: 'auto', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem', paddingRight: '0.5rem' }}>
+              {posts && posts.filter(p => p.mediaUrl).map(post => (
+                 <div 
+                   key={post.id} 
+                   onClick={() => { setPreview(post.mediaUrl); setFile(null); setShowMediaModal(false); }}
+                   style={{ cursor: 'pointer', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'hidden', background: '#f8fafc', padding: '1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.8rem', transition: '0.2s' }}
+                   className="table-row-hover"
+                 >
+                   <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: isVideo(post) ? '#eef2ff' : '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                     {isVideo(post) ? <Video color="var(--primary)" /> : <FileImage color="#10b981" />}
+                   </div>
+                   <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-main)', textAlign: 'center', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{post.content || 'Media'}</span>
+                 </div>
+              ))}
+              {(!posts || posts.filter(p => p.mediaUrl).length === 0) && (
+                <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                  <ImageIcon size={48} style={{ opacity: 0.2, margin: '0 auto 1rem' }} />
+                  Belum ada media di galeri.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

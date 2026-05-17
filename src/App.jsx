@@ -306,6 +306,7 @@ function App() {
                 initialMedia={prefilledMedia}
                 onClearInitial={() => setPrefilledMedia(null)}
                 accounts={accounts}
+                posts={posts}
               />
             )}
             {activePage === 'queue' && <ScheduleList posts={posts} onDelete={handleDeletePost} onUpdate={handleUpdatePost} onUseMedia={handleUseMedia} />}
