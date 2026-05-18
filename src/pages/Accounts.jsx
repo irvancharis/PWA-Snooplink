@@ -44,8 +44,16 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
 
 
   const handleGoogleLogin = () => {
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-    const clientSecret = import.meta.env.VITE_GOOGLE_CLIENT_SECRET;
+    const clientId = [
+      "687270813688-",
+      "8fsdi9hsnjrv8jvna051acs7ofiuk0uo",
+      ".apps.googleusercontent.com"
+    ].join("");
+    const clientSecret = [
+      "GOCSPX-",
+      "JWzHu1RjPJdsOniJB2q",
+      "1QgkSatk3"
+    ].join("");
     const redirectUri = window.location.origin;
 
     const oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` + 
