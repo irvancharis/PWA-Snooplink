@@ -58,11 +58,12 @@ const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia, user }) => {
     if (!editContent || !editDate || !editTime) return alert("Harap isi semua kolom!");
     
     // Daily scheduling limit validation
+    const isSuperAdmin = user?.role === 'admin' || user?.email === 'irvancharis@gmail.com';
     const dailyLimit = user?.dailyPostLimit !== undefined ? user.dailyPostLimit : 5;
     const targetDate = editDate; // e.g. "2026-05-18"
     const postsOnSameDate = (posts || []).filter(p => p.id !== editingPost.id && p.time && p.time.startsWith(targetDate) && p.status !== 'Failed' && p.status !== 'Deleted');
 
-    if (postsOnSameDate.length >= dailyLimit) {
+    if (!isSuperAdmin && postsOnSameDate.length >= dailyLimit) {
       alert(`Batas posting harian terlampaui! Anda hanya diizinkan menjadwalkan maksimal ${dailyLimit} postingan per hari. Anda sudah memiliki ${postsOnSameDate.length} postingan pada tanggal ${targetDate}.`);
       return;
     }

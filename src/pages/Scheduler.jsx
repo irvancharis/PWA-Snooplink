@@ -82,11 +82,12 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
     }
     
     // Daily scheduling limit validation
+    const isSuperAdmin = user?.role === 'admin' || user?.email === 'irvancharis@gmail.com';
     const dailyLimit = user?.dailyPostLimit !== undefined ? user.dailyPostLimit : 5;
     const targetDate = date; // e.g. "2026-05-18"
     const postsOnSameDate = (posts || []).filter(p => p.time && p.time.startsWith(targetDate) && p.status !== 'Failed' && p.status !== 'Deleted');
 
-    if (postsOnSameDate.length >= dailyLimit) {
+    if (!isSuperAdmin && postsOnSameDate.length >= dailyLimit) {
       alert(`Batas posting harian terlampaui! Anda hanya diizinkan menjadwalkan maksimal ${dailyLimit} postingan per hari. Anda sudah memiliki ${postsOnSameDate.length} postingan pada tanggal ${targetDate}.`);
       return;
     }
@@ -142,7 +143,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
             Batas Jadwal Harian: 
           </span>
           <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--primary)' }}>
-             {(user?.dailyPostLimit !== undefined ? user.dailyPostLimit : 5)} Post/Hari
+             {user?.role === 'admin' || user?.email === 'irvancharis@gmail.com' ? 'Tidak Terbatas' : `${user?.dailyPostLimit !== undefined ? user.dailyPostLimit : 5} Post/Hari`}
           </span>
         </div>
         <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>

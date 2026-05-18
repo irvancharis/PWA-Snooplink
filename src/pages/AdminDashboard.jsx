@@ -165,7 +165,9 @@ const AdminDashboard = ({ scriptUrl }) => {
                 </td>
                 <td style={{ padding: '1.2rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>{u.dailyPostLimit || 5} Post</span>
+                    <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+                      {u.role === 'admin' || u.email === 'irvancharis@gmail.com' ? 'Tidak Terbatas' : `${u.dailyPostLimit || 5} Post`}
+                    </span>
                     {u.role !== 'admin' && (
                       <button onClick={() => handleEditDailyPostLimit(u)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0 }} title="Ubah Limit Post Harian">
                         <Settings size={14} />

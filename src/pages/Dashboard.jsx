@@ -58,7 +58,9 @@ const Dashboard = ({ posts: allPosts, onUseMedia, user, onViewAll }) => {
         <div className="card" style={{ position: 'relative', overflow: 'hidden' }}>
           <Sliders size={64} style={{ position: 'absolute', right: '-1rem', bottom: '-1rem', opacity: 0.1, color: '#f59e0b' }} />
           <p className="stat-label">Kuota Harian</p>
-          <div className="stat-value">{todayPostsCount} / {dailyLimit}</div>
+          <div className="stat-value">
+            {user?.role === 'admin' || user?.email === 'irvancharis@gmail.com' ? `${todayPostsCount} / Tidak Terbatas` : `${todayPostsCount} / ${dailyLimit}`}
+          </div>
           <div style={{ color: '#f59e0b', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600 }}>
             <span>Jadwal Hari Ini</span>
           </div>
