@@ -17,6 +17,7 @@ import MediaLibrary from './pages/MediaLibrary';
 import Accounts from './pages/Accounts';
 import AdminDashboard from './pages/AdminDashboard';
 import { PendingPage, RejectedPage, ExpiredPage } from './pages/StatusPages';
+import PrivacyPolicy from './pages/PrivacyPolicy';
 
 // Firebase Services
 import { db } from './firebase';
@@ -310,6 +311,10 @@ function App() {
       throw error;
     }
   };
+
+  if (window.location.pathname === '/privacy') {
+    return <PrivacyPolicy />;
+  }
 
   if (authLoading) return (
     <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
