@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Image as ImageIcon, Video, FileImage, X, RefreshCw, TrendingUp, Calendar, Zap } from 'lucide-react';
+import { Image as ImageIcon, Video, FileImage, X, RefreshCw, TrendingUp, Calendar, Zap, Sliders, CheckCircle2 } from 'lucide-react';
 
-const Dashboard = ({ posts: allPosts, onUseMedia }) => {
+const Dashboard = ({ posts: allPosts, onUseMedia, user, onViewAll }) => {
   const posts = allPosts.filter(p => p.status !== 'Deleted');
   const [selectedPost, setSelectedPost] = useState(null);
 
@@ -11,6 +11,8 @@ const Dashboard = ({ posts: allPosts, onUseMedia }) => {
     if (!url) return false;
     return url.startsWith('data:video') || url.match(/\.(mp4|webm|ogg|mov|quicktime)(\?.*)?$/i);
   };
+
+  const isDriveUrl = (url) => url && url.includes("drive.google.com");
 
   const getDirectLink = (url) => {
     if (!url) return '';
@@ -25,16 +27,21 @@ const Dashboard = ({ posts: allPosts, onUseMedia }) => {
     return url;
   };
 
+  // Calculate posts scheduled for today
+  const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD format
+  const todayPostsCount = posts.filter(p => p.time && p.time.startsWith(todayStr) && p.status !== 'Failed' && p.status !== 'Deleted').length;
+  const dailyLimit = user?.dailyPostLimit !== undefined ? user.dailyPostLimit : 5;
+  const totalPublished = posts.filter(p => p.status?.toLowerCase() === 'published' || p.status?.toLowerCase() === 'success').length;
+
   return (
     <>
       <div className="grid">
         <div className="card" style={{ position: 'relative', overflow: 'hidden' }}>
-          <TrendingUp size={64} style={{ position: 'absolute', right: '-1rem', bottom: '-1rem', opacity: 0.1, color: '#10b981' }} />
-          <p className="stat-label">Total Jangkauan</p>
-          <div className="stat-value">{(posts.length * 1.2).toFixed(1)}K</div>
+          <CheckCircle2 size={64} style={{ position: 'absolute', right: '-1rem', bottom: '-1rem', opacity: 0.1, color: '#10b981' }} />
+          <p className="stat-label">Total Published</p>
+          <div className="stat-value">{totalPublished}</div>
           <div style={{ color: '#10b981', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600 }}>
-            <TrendingUp size={14} />
-            <span>+12.5% minggu ini</span>
+            <span>Postingan berhasil terbit</span>
           </div>
         </div>
         
@@ -49,16 +56,18 @@ const Dashboard = ({ posts: allPosts, onUseMedia }) => {
         </div>
 
         <div className="card" style={{ position: 'relative', overflow: 'hidden' }}>
-          <Zap size={64} style={{ position: 'absolute', right: '-1rem', bottom: '-1rem', opacity: 0.1, color: 'var(--secondary)' }} />
-          <p className="stat-label">Platform</p>
-          <div className="stat-value">3</div>
-          <div style={{ color: 'var(--secondary)', fontSize: '0.85rem', fontWeight: 600 }}>FB, IG, TikTok Terhubung</div>
+          <Sliders size={64} style={{ position: 'absolute', right: '-1rem', bottom: '-1rem', opacity: 0.1, color: '#f59e0b' }} />
+          <p className="stat-label">Kuota Harian</p>
+          <div className="stat-value">{todayPostsCount} / {dailyLimit}</div>
+          <div style={{ color: '#f59e0b', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600 }}>
+            <span>Jadwal Hari Ini</span>
+          </div>
         </div>
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4rem', marginBottom: '1.5rem' }}>
         <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)' }}>Aktivitas Terbaru</h2>
-        <button style={{ fontSize: '0.85rem', background: 'transparent', border: 'none', color: 'var(--primary)', fontWeight: 600, cursor: 'pointer' }}>Lihat Semua</button>
+        <button onClick={onViewAll} style={{ fontSize: '0.85rem', background: 'transparent', border: 'none', color: 'var(--primary)', fontWeight: 600, cursor: 'pointer' }}>Lihat Semua</button>
       </div>
 
       <div className="card" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--border-color)', background: '#fff' }}>
@@ -147,7 +156,11 @@ const Dashboard = ({ posts: allPosts, onUseMedia }) => {
             </button>
 
             <div style={{ width: '100%', background: '#000', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '350px', maxHeight: '70vh', padding: '1rem' }}>
-              {isVideo(selectedPost) ? (
+              {isDriveUrl(selectedPost?.mediaUrl) ? (
+                <div style={{ width: '100%', height: '60vh', background: '#fff', borderRadius: '8px', overflow: 'hidden' }}>
+                   <iframe src={selectedPost.mediaUrl} style={{ width: '100%', height: '100%', border: 'none' }} title="Preview" />
+                </div>
+              ) : isVideo(selectedPost) ? (
                 <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
                   <video 
                     src={selectedPost.mediaUrl} 
@@ -161,15 +174,6 @@ const Dashboard = ({ posts: allPosts, onUseMedia }) => {
                   <div style={{ color: '#fff', fontSize: '0.8rem', opacity: 0.7, textAlign: 'center', marginTop: '0.5rem' }}>
                     Jika video tidak muncul, Google Drive mungkin masih memproses file Anda.
                   </div>
-                  <a 
-                    href={selectedPost.mediaUrl.includes('drive.google.com') ? selectedPost.mediaUrl.replace('uc?id=', 'file/d/').split('&')[0] + '/view' : selectedPost.mediaUrl} 
-                    target="_blank" 
-                    rel="noreferrer"
-                    className="btn"
-                    style={{ background: 'var(--primary)', color: '#fff', border: 'none', fontSize: '0.8rem', marginTop: '0.5rem', padding: '0.6rem 1.2rem' }}
-                  >
-                    Tonton di Google Drive (Tab Baru)
-                  </a>
                 </div>
               ) : (
                 <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>

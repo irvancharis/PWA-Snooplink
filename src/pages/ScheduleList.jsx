@@ -12,10 +12,11 @@ import {
   X,
   RefreshCw,
   Edit,
-  Save
+  Save,
+  Lock
 } from 'lucide-react';
 
-const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia }) => {
+const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia, user }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [selectedPost, setSelectedPost] = useState(null);
@@ -55,6 +56,17 @@ const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia }) => {
 
   const handleSaveEdit = async () => {
     if (!editContent || !editDate || !editTime) return alert("Harap isi semua kolom!");
+    
+    // Daily scheduling limit validation
+    const dailyLimit = user?.dailyPostLimit !== undefined ? user.dailyPostLimit : 5;
+    const targetDate = editDate; // e.g. "2026-05-18"
+    const postsOnSameDate = (posts || []).filter(p => p.id !== editingPost.id && p.time && p.time.startsWith(targetDate) && p.status !== 'Failed' && p.status !== 'Deleted');
+
+    if (postsOnSameDate.length >= dailyLimit) {
+      alert(`Batas posting harian terlampaui! Anda hanya diizinkan menjadwalkan maksimal ${dailyLimit} postingan per hari. Anda sudah memiliki ${postsOnSameDate.length} postingan pada tanggal ${targetDate}.`);
+      return;
+    }
+
     setIsSaving(true);
     try {
       await onUpdate(editingPost.id, {
@@ -200,18 +212,22 @@ const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia }) => {
                             <Edit size={16} />
                           </button>
                         )}
-                        <button 
-                          className="btn" 
-                          style={{ padding: '0.5rem', background: '#fee2e2', color: '#ef4444', borderRadius: '8px' }}
-                          onClick={() => onDelete(post.id)}
-                          title="Hapus Jadwal"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                        {post.status === 'Published' && (
-                          <button className="btn" style={{ padding: '0.5rem', background: '#f1f5f9', color: 'var(--text-muted)', borderRadius: '8px' }}>
-                            <ExternalLink size={16} />
+                        {post.status !== 'Published' ? (
+                          <button 
+                            className="btn" 
+                            style={{ padding: '0.5rem', background: '#fee2e2', color: '#ef4444', borderRadius: '8px' }}
+                            onClick={() => onDelete(post.id)}
+                            title="Hapus Jadwal"
+                          >
+                            <Trash2 size={16} />
                           </button>
+                        ) : (
+                          <div 
+                            style={{ padding: '0.5rem', color: '#94a3b8', display: 'flex', justifyContent: 'center', cursor: 'not-allowed' }}
+                            title="Riwayat tayang tidak dapat dihapus."
+                          >
+                            <Lock size={16} />
+                          </div>
                         )}
                       </div>
                     </td>

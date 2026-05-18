@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Image as ImageIcon, Send, Grid, X, Video, FileImage, CheckCircle2 } from 'lucide-react';
 
-const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }) => {
+const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, user }) => {
   const [content, setContent] = useState('');
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [date, setDate] = useState('');
@@ -19,6 +19,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }
 
   const [uploading, setUploading] = useState(false);
   const [showMediaModal, setShowMediaModal] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
 
   const isVideo = (post) => {
     if (post.mediaType?.startsWith('video/')) return true;
@@ -80,6 +81,16 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }
       if (!content || !date || !time) return alert("Harap isi Konten, Tanggal, dan Waktu!");
     }
     
+    // Daily scheduling limit validation
+    const dailyLimit = user?.dailyPostLimit !== undefined ? user.dailyPostLimit : 5;
+    const targetDate = date; // e.g. "2026-05-18"
+    const postsOnSameDate = (posts || []).filter(p => p.time && p.time.startsWith(targetDate) && p.status !== 'Failed' && p.status !== 'Deleted');
+
+    if (postsOnSameDate.length >= dailyLimit) {
+      alert(`Batas posting harian terlampaui! Anda hanya diizinkan menjadwalkan maksimal ${dailyLimit} postingan per hari. Anda sudah memiliki ${postsOnSameDate.length} postingan pada tanggal ${targetDate}.`);
+      return;
+    }
+    
     setUploading(true);
     await onSchedule({ 
       content, 
@@ -90,7 +101,9 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }
       mediaUrl: preview || "",
       mediaType: file ? file.type : (preview?.startsWith('data:video') ? 'video/mp4' : 'image/jpeg'),
       fileName: file ? file.name : (posts?.find(p => p.mediaUrl === preview)?.fileName || 'Media_Galeri'),
+      fileSize: file ? file.size : (posts?.find(p => p.mediaUrl === preview)?.fileSize || 0),
       file: file, // Pass the file object for Storage upload
+      linkUrl: account.platform === 'facebook' ? linkUrl : '',
       ...(account.platform === 'youtube' && {
         ytTitle,
         ytTags,
@@ -110,7 +123,33 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }
         <h2 style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>Buat Postingan Baru</h2>
         <p className="stat-label">Jadwalkan konten media sosial Anda dengan mudah</p>
       </div>
-      
+      {/* Daily Limit Notice */}
+      <div style={{ 
+        background: '#f8fafc', 
+        border: '1px solid #e2e8f0', 
+        borderRadius: '16px', 
+        padding: '1.2rem', 
+        marginBottom: '2rem', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '0.8rem'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+          <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#6366f1' }}></div>
+          <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-main)' }}>
+            Batas Jadwal Harian: 
+          </span>
+          <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--primary)' }}>
+             {(user?.dailyPostLimit !== undefined ? user.dailyPostLimit : 5)} Post/Hari
+          </span>
+        </div>
+        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+          Ditetapkan secara resmi oleh Admin
+        </span>
+      </div>
+
       <form className="scheduler-form" onSubmit={handleSubmit}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
           
@@ -189,6 +228,22 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }
                 required
               ></textarea>
             </div>
+
+            {selectedPlatform === 'facebook' && (
+              <div className="input-group" style={{ marginTop: '1.5rem' }}>
+                <label className="stat-label">Tautan Link Web (Opsional - Clickable Image Link)</label>
+                <input 
+                  type="url" 
+                  placeholder="https://toko-anda.com/produk" 
+                  style={{ marginTop: '0.5rem', background: '#fff', width: '100%', border: '1px solid #e2e8f0' }}
+                  value={linkUrl}
+                  onChange={(e) => setLinkUrl(e.target.value)}
+                />
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.5rem', lineHeight: '1.4' }}>
+                  💡 <strong>Info:</strong> Jika diisi, postingan Facebook akan diterbitkan sebagai <strong>Link Post</strong>. Pengunjung Facebook dapat mengklik gambar pratinjau untuk langsung pergi ke tautan website ini.
+                </p>
+              </div>
+            )}
 
             {selectedPlatform === 'youtube' && (
               <div style={{ display: 'flex', gap: '1.5rem', marginTop: '1.5rem' }}>
@@ -417,6 +472,15 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts }
               }
             `}} />
           </div>
+        </div>,
+        document.body
+      )}
+      {uploading && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(255,255,255,0.8)', backdropFilter: 'blur(5px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: '60px', height: '60px', border: '5px solid #eef2ff', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+          <p style={{ marginTop: '1.5rem', fontWeight: 800, color: 'var(--text-main)', fontSize: '1.2rem' }}>Menyimpan Jadwal...</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.5rem', fontWeight: 500 }}>Proses pengunggahan sedang berjalan. Mohon jangan tutup halaman ini.</p>
+          <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
         </div>,
         document.body
       )}

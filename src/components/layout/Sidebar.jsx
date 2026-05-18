@@ -8,18 +8,22 @@ import {
   LineChart, 
   Settings, 
   LogOut, 
-  Rocket 
+  Rocket,
+  ShieldCheck
 } from 'lucide-react';
 
-const Sidebar = ({ activePage, onNavigate, onLogout, isOpen, onClose }) => {
+const Sidebar = ({ activePage, onNavigate, onLogout, isOpen, onClose, user }) => {
   const menuItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { id: 'scheduler', icon: Calendar, label: 'Create Post' },
     { id: 'queue', icon: List, label: 'List Schedule' },
     { id: 'media', icon: ImageIcon, label: 'Media Library' },
     { id: 'accounts', icon: Users, label: 'Accounts' },
-    { id: 'analytics', icon: LineChart, label: 'Analytics' },
   ];
+
+  if (user?.role === 'admin') {
+    menuItems.push({ id: 'admin', icon: ShieldCheck, label: 'Superadmin' });
+  }
 
   const handleNavigate = (id) => {
     onNavigate(id);
@@ -50,13 +54,35 @@ const Sidebar = ({ activePage, onNavigate, onLogout, isOpen, onClose }) => {
           ))}
         </nav>
 
-        <div style={{ marginTop: 'auto', paddingTop: '2rem', borderTop: '1px solid var(--border-color)' }}>
-          <div className={`nav-item ${activePage === 'settings' ? 'active' : ''}`} onClick={() => handleNavigate('settings')}>
-            <Settings size={20} />
-            <span>Pengaturan</span>
+        <div style={{ marginTop: 'auto', paddingTop: '1.5rem', borderTop: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', padding: '0.2rem 0.5rem' }}>
+            <div style={{
+              width: '38px',
+              height: '38px',
+              borderRadius: '50%',
+              background: 'linear-gradient(45deg, var(--primary), var(--secondary))',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'white',
+              fontWeight: 700,
+              fontSize: '0.95rem',
+              flexShrink: 0
+            }}>
+              {(user?.name || user?.email || 'U').charAt(0).toUpperCase()}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <span style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {user?.name || 'User'}
+              </span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {user?.email || ''}
+              </span>
+            </div>
           </div>
-          <div className="nav-item" onClick={onLogout} style={{ color: '#ef4444' }}>
-            <LogOut size={20} />
+
+          <div className="nav-item" onClick={onLogout} style={{ color: '#ef4444', padding: '0.6rem 0.8rem' }}>
+            <LogOut size={18} />
             <span>Keluar</span>
           </div>
         </div>

@@ -10,6 +10,7 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
   const [showHelp, setShowHelp] = useState(false);
   const [fbPages, setFbPages] = useState([]);
   const [isFbLoading, setIsFbLoading] = useState(false);
+  const [manualMode, setManualMode] = useState(false);
   const [formData, setFormData] = useState({
     name: '', platform: 'facebook', handle: '', pageId: '', accessToken: '', appId: '', apiSecret: ''
   });
@@ -36,30 +37,68 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
   const handleCloseModal = () => {
     setShowModal(false);
     setIsEditing(false);
+    setManualMode(false);
     setFormData({ name: '', platform: 'facebook', handle: '', pageId: '', accessToken: '', appId: '', apiSecret: '' });
   };
 
-  const handleGoogleLogin = async () => {
-    try {
-      const provider = new GoogleAuthProvider();
-      provider.addScope('https://www.googleapis.com/auth/youtube.upload');
-      provider.addScope('https://www.googleapis.com/auth/youtube.readonly');
-      
-      const result = await signInWithPopup(auth, provider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      
-      if (credential && credential.accessToken) {
-        setFormData(prev => ({
-          ...prev, 
-          accessToken: credential.accessToken, 
-          pageId: result.user.uid,
-          name: prev.name || result.user.displayName || 'Channel YouTube'
-        }));
+
+
+  const handleGoogleLogin = () => {
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    const clientSecret = import.meta.env.VITE_GOOGLE_CLIENT_SECRET;
+    const redirectUri = window.location.origin;
+
+    const oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` + 
+      `client_id=${clientId}` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&response_type=code` +
+      `&scope=${encodeURIComponent('https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly')}` +
+      `&access_type=offline` +
+      `&prompt=consent`;
+
+    const popup = window.open(oauthUrl, 'Google OAuth', 'width=500,height=600');
+
+    const pollTimer = window.setInterval(async () => {
+      try {
+        if (!popup || popup.closed) {
+          window.clearInterval(pollTimer);
+        }
+        
+        const popupUrl = popup.location.href;
+        if (popupUrl && popupUrl.includes(redirectUri) && popupUrl.includes('code=')) {
+          window.clearInterval(pollTimer);
+          const urlParams = new URLSearchParams(popup.location.search);
+          const code = urlParams.get('code');
+          popup.close();
+          
+          const response = await fetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              code: code,
+              client_id: clientId,
+              client_secret: clientSecret,
+              redirect_uri: redirectUri,
+              grant_type: 'authorization_code'
+            })
+          });
+          
+          const data = await response.json();
+          if (data.refresh_token) {
+            setFormData(prev => ({
+              ...prev, 
+              accessToken: data.refresh_token,
+              pageId: 'YouTube_User',
+              name: prev.name || 'Channel YouTube'
+            }));
+          } else {
+            alert('PENTING: Gagal mendapatkan Refresh Token. Jika pengguna pernah login sebelumnya, mereka harus mencabut izin aplikasi di akun Google mereka terlebih dahulu.');
+          }
+        }
+      } catch (e) {
+        // Abaikan error cross-origin selama proses polling
       }
-    } catch (error) {
-      console.error(error);
-      alert("Gagal login dengan Google: " + error.message);
-    }
+    }, 500);
   };
 
   const handleFacebookLogin = async () => {
@@ -127,38 +166,56 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
     }
   };
 
-  const guides = {
-    facebook: {
-      title: "Integrasi Meta Business",
+  const getGuideContent = (platform, isManual) => {
+    if (platform === 'youtube') {
+      return {
+        title: "Panduan YouTube (Otomatis)",
+        steps: [
+          <span>Klik tombol <strong>"Login dengan Akun Google"</strong> di sebelah kiri.</span>,
+          <span>Pop-up Google akan muncul. Pilih akun Google yang memiliki Channel YouTube Anda.</span>,
+          <span>Izinkan SnoopLink untuk mengunggah dan melihat video YouTube Anda (centang semua izin).</span>,
+          <span>Sistem akan otomatis mendapatkan Token. Klik <strong>"Hubungkan Akun"</strong> untuk menyimpan!</span>
+        ],
+        link: "https://developers.google.com/youtube/v3/getting-started"
+      };
+    }
+    if (platform === 'facebook' || platform === 'instagram') {
+      if (isManual) {
+        return {
+          title: `Panduan ${platform === 'facebook' ? 'Facebook' : 'Instagram'} (Kredensial Manual)`,
+          steps: [
+            <span><strong>Cari ID Halaman Anda:</strong> Buka Halaman FB Anda, masuk ke tab <strong>Tentang (About)</strong>. Scroll ke bawah, dan Anda akan menemukan <strong>ID Halaman (Page ID)</strong> berupa deretan angka resmi yang bisa langsung disalin.</span>,
+            <span><strong>Buka Meta Developer:</strong> Masuk ke portal <a href="https://developers.facebook.com/" target="_blank" rel="noreferrer" style={{color: 'var(--primary)', fontWeight: 600, textDecoration: 'underline'}}>Meta for Developers</a> dan buat aplikasi bertipe <strong>Business</strong>.</span>,
+            <span><strong>Dapatkan Token Akses Halaman:</strong> Masuk ke <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noreferrer" style={{color: 'var(--primary)', fontWeight: 600, textDecoration: 'underline'}}>Meta Graph API Explorer</a>.</span>,
+            <span>Pilih <strong>Halaman FB</strong> Anda pada dropdown, berikan izin <code>pages_manage_posts</code>, lalu klik <strong>Generate Token</strong>. Salin token panjang tersebut ke kolom di sebelah kiri.</span>
+          ],
+          link: "https://developers.facebook.com/docs/pages/access-tokens/"
+        };
+      } else {
+        return {
+          title: `Panduan ${platform === 'facebook' ? 'Facebook' : 'Instagram'} (Otomatis)`,
+          steps: [
+            <span>Klik tombol <strong>"Login dengan Facebook"</strong> yang berwarna biru di sebelah kiri.</span>,
+            <span>Jendela pop-up Facebook resmi akan terbuka. Masuk ke akun Anda.</span>,
+            <span>PENTING: Pilih <strong>"Edit Settings" / "Edit Pengaturan"</strong> untuk memilih Halaman mana saja yang ingin Anda hubungkan ke SnoopLink.</span>,
+            <span>Lanjutkan proses perizinan hingga selesai.</span>,
+            <span>Kembali ke SnoopLink, pilih Halaman Anda dari daftar dropdown yang muncul, lalu simpan!</span>
+          ],
+          link: "https://developers.facebook.com/docs/pages/access-tokens/"
+        };
+      }
+    }
+    // tiktok
+    return {
+      title: "Panduan TikTok (Kredensial Manual)",
       steps: [
-        "Masuk ke Meta for Developers Dashboard.",
-        "Buat App baru (Type: Business).",
-        "Buka Graph API Explorer.",
-        "Generate Long-lived Page Access Token.",
-        "Page ID tersedia di menu Settings -> Page Info."
-      ],
-      link: "https://developers.facebook.com/docs/pages/access-tokens/"
-    },
-    tiktok: {
-      title: "Integrasi TikTok Business",
-      steps: [
-        "Login ke TikTok for Developers.",
-        "Ajukan akses 'Content Posting API'.",
-        "Ambil Client Key & Secret dari tab App Config.",
-        "Gunakan 'Business Account ID' dari profil bisnis Anda."
+        <span>Masuk ke <a href="https://developers.tiktok.com/" target="_blank" rel="noreferrer" style={{color: 'var(--primary)', fontWeight: 600, textDecoration: 'underline'}}>TikTok for Developers</a>.</span>,
+        <span>Ajukan izin akses untuk fitur <strong>'Content Posting API'</strong> di aplikasi Anda.</span>,
+        <span>Salin <strong>Client Key</strong> &amp; <strong>Client Secret</strong> dari tab App Config Anda.</span>,
+        <span>Gunakan <strong>Business Account ID</strong> Anda yang terdaftar pada profil bisnis TikTok.</span>
       ],
       link: "https://developers.tiktok.com/doc/about-tiktok-api/"
-    },
-    youtube: {
-      title: "Integrasi YouTube Data API",
-      steps: [
-        "Masuk ke Google Cloud Console.",
-        "Buat Project baru dan aktifkan YouTube Data API v3.",
-        "Buat kredensial OAuth 2.0 Client ID.",
-        "Generate Access Token menggunakan OAuth 2.0 Playground."
-      ],
-      link: "https://developers.google.com/youtube/v3/getting-started"
-    }
+    };
   };
 
   return (
@@ -358,47 +415,87 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
                         )}
                       </div>
                     ) : formData.platform === 'facebook' || formData.platform === 'instagram' ? (
-                      <div className="input-group" style={{ marginBottom: 0, textAlign: 'center' }}>
-                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
-                          Snooplink membutuhkan izin akses untuk mengelola {formData.platform === 'instagram' ? 'Instagram Bisnis' : 'Facebook Page'} Anda.
-                        </p>
-                        
-                        {!formData.accessToken && fbPages.length === 0 ? (
-                          <button 
+                      <div className="input-group" style={{ marginBottom: 0 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Pilih Metode Hubungkan</span>
+                          <button
                             type="button"
-                            onClick={handleFacebookLogin}
-                            disabled={isFbLoading}
-                            style={{ 
-                              background: '#1877f2', border: 'none', color: '#fff', 
-                              fontWeight: 700, padding: '1rem', borderRadius: '16px', cursor: 'pointer',
-                              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.8rem',
-                              boxShadow: '0 4px 6px -1px rgba(24, 119, 242, 0.4)', width: '100%', transition: '0.2s',
-                              opacity: isFbLoading ? 0.7 : 1
-                            }}
+                            onClick={() => setManualMode(!manualMode)}
+                            style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline' }}
                           >
-                            <i className="fab fa-facebook-f" style={{ fontSize: '1.2rem' }}></i>
-                            {isFbLoading ? 'Memuat...' : 'Login dengan Facebook'}
+                            {manualMode ? 'Gunakan Auto OAuth' : 'Gunakan Kredensial Manual (Page Token)'}
                           </button>
-                        ) : fbPages.length > 0 ? (
-                          <div style={{ textAlign: 'left', background: '#f5f7ff', padding: '1rem', borderRadius: '16px', border: '1px solid #e0e7ff' }}>
-                            <label className="stat-label" style={{ marginBottom: '0.5rem', display: 'block', color: 'var(--primary)' }}>PILIH HALAMAN {formData.platform === 'instagram' ? 'YANG TERHUBUNG KE IG' : ''}</label>
-                            <select 
-                              onChange={(e) => {
-                                const selected = fbPages.find(p => p.id === e.target.value);
-                                if(selected) handlePageSelect(selected);
-                              }} 
-                              style={{ width: '100%', padding: '0.8rem', borderRadius: '10px', border: '1px solid #c7d2fe' }}
-                              defaultValue=""
-                            >
-                              <option value="" disabled>-- Pilih Halaman --</option>
-                              {fbPages.map(p => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                              ))}
-                            </select>
-                          </div>
+                        </div>
+
+                        {manualMode ? (
+                          <>
+                            <div className="input-group" style={{ marginBottom: '1.5rem', textAlign: 'left' }}>
+                              <label className="stat-label" style={{ fontSize: '0.75rem' }}>
+                                {formData.platform === 'instagram' ? 'INSTAGRAM BUSINESS ACCOUNT ID' : 'FACEBOOK PAGE ID'}
+                              </label>
+                              <input 
+                                type="text" 
+                                placeholder={formData.platform === 'instagram' ? "Masukkan ID Akun Bisnis Instagram..." : "Masukkan ID Halaman Facebook..."} 
+                                value={formData.pageId} 
+                                onChange={e => setFormData({...formData, pageId: e.target.value})} 
+                                style={{ width: '100%', padding: '0.8rem', borderRadius: '10px', border: '1px solid #c7d2fe' }} 
+                              />
+                            </div>
+                            <div className="input-group" style={{ marginBottom: 0, textAlign: 'left' }}>
+                              <label className="stat-label" style={{ fontSize: '0.75rem' }}>PAGE ACCESS TOKEN (PERMANENT / LONG-LIVED)</label>
+                              <textarea 
+                                rows={4} 
+                                placeholder="Masukkan Page Access Token di sini..." 
+                                style={{ fontSize: '0.85rem', padding: '1.2rem', width: '100%', border: '1px solid #e2e8f0', borderRadius: '16px' }} 
+                                value={formData.accessToken} 
+                                onChange={e => setFormData({...formData, accessToken: e.target.value})} 
+                              />
+                            </div>
+                          </>
                         ) : (
-                          <div style={{ marginTop: '0.5rem', color: '#10b981', fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: '#f0fdf4', padding: '0.8rem', borderRadius: '12px' }}>
-                            <CheckCircle2 size={18} /> Berhasil Terhubung ke {formData.name}!
+                          <div style={{ textAlign: 'center' }}>
+                            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                              Snooplink membutuhkan izin akses untuk mengelola {formData.platform === 'instagram' ? 'Instagram Bisnis' : 'Facebook Page'} Anda.
+                            </p>
+                            
+                            {!formData.accessToken && fbPages.length === 0 ? (
+                              <button 
+                                type="button"
+                                onClick={handleFacebookLogin}
+                                disabled={isFbLoading}
+                                style={{ 
+                                  background: '#1877f2', border: 'none', color: '#fff', 
+                                  fontWeight: 700, padding: '1rem', borderRadius: '16px', cursor: 'pointer',
+                                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.8rem',
+                                  boxShadow: '0 4px 6px -1px rgba(24, 119, 242, 0.4)', width: '100%', transition: '0.2s',
+                                  opacity: isFbLoading ? 0.7 : 1
+                                }}
+                              >
+                                <i className="fab fa-facebook-f" style={{ fontSize: '1.2rem' }}></i>
+                                {isFbLoading ? 'Memuat...' : 'Login dengan Facebook'}
+                              </button>
+                            ) : fbPages.length > 0 ? (
+                              <div style={{ textAlign: 'left', background: '#f5f7ff', padding: '1rem', borderRadius: '16px', border: '1px solid #e0e7ff' }}>
+                                <label className="stat-label" style={{ marginBottom: '0.5rem', display: 'block', color: 'var(--primary)' }}>PILIH HALAMAN {formData.platform === 'instagram' ? 'YANG TERHUBUNG KE IG' : ''}</label>
+                                <select 
+                                  onChange={(e) => {
+                                    const selected = fbPages.find(p => p.id === e.target.value);
+                                    if(selected) handlePageSelect(selected);
+                                  }} 
+                                  style={{ width: '100%', padding: '0.8rem', borderRadius: '10px', border: '1px solid #c7d2fe' }}
+                                  defaultValue=""
+                                >
+                                  <option value="" disabled>-- Pilih Halaman --</option>
+                                  {fbPages.map(p => (
+                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            ) : (
+                              <div style={{ marginTop: '0.5rem', color: '#10b981', fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: '#f0fdf4', padding: '0.8rem', borderRadius: '12px' }}>
+                                <CheckCircle2 size={18} /> Berhasil Terhubung ke {formData.name}!
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -444,19 +541,19 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
 
                       <div style={{ background: '#fff', padding: '2rem', borderRadius: '24px', border: '1px solid #e2e8f0', marginBottom: '2.5rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
                         <p style={{ fontWeight: 800, fontSize: '1rem', marginBottom: '1.5rem', color: 'var(--primary)' }}>
-                          {guides[formData.platform === 'tiktok' ? 'tiktok' : (formData.platform === 'youtube' ? 'youtube' : 'facebook')].title}
+                          {getGuideContent(formData.platform, manualMode).title}
                         </p>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                          {guides[formData.platform === 'tiktok' ? 'tiktok' : (formData.platform === 'youtube' ? 'youtube' : 'facebook')].steps.map((step, idx) => (
+                          {getGuideContent(formData.platform, manualMode).steps.map((step, idx) => (
                             <div key={idx} style={{ display: 'flex', gap: '1.2rem' }}>
                               <span style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 800, flexShrink: 0 }}>{idx + 1}</span>
-                              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.6', fontWeight: 500 }}>{step}</p>
+                              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.6', fontWeight: 500 }}>{step}</div>
                             </div>
                           ))}
                         </div>
                       </div>
 
-                      <a href={guides[formData.platform === 'tiktok' ? 'tiktok' : (formData.platform === 'youtube' ? 'youtube' : 'facebook')].link} target="_blank" rel="noreferrer" className="btn" style={{ background: 'var(--text-main)', color: 'white', width: '100%', justifyContent: 'center', borderRadius: '18px', fontSize: '0.9rem', padding: '1rem' }}>
+                      <a href={getGuideContent(formData.platform, manualMode).link} target="_blank" rel="noreferrer" className="btn" style={{ background: 'var(--text-main)', color: 'white', width: '100%', justifyContent: 'center', borderRadius: '18px', fontSize: '0.9rem', padding: '1rem' }}>
                         Dokumentasi Resmi <ExternalLink size={16} style={{ marginLeft: '0.6rem' }} />
                       </a>
                     </div>

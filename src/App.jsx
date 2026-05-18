@@ -7,6 +7,7 @@ import { useAuth } from './context/AuthContext';
 
 // Components
 import Sidebar from './components/layout/Sidebar';
+import PWAInstallPrompt from './components/PWAInstallPrompt';
 
 // Pages
 import Dashboard from './pages/Dashboard';
@@ -14,7 +15,8 @@ import Scheduler from './pages/Scheduler';
 import AuthPage from './pages/AuthPage';
 import MediaLibrary from './pages/MediaLibrary';
 import Accounts from './pages/Accounts';
-import Analytics from './pages/Analytics';
+import AdminDashboard from './pages/AdminDashboard';
+import { PendingPage, RejectedPage, ExpiredPage } from './pages/StatusPages';
 
 // Firebase Services
 import { db } from './firebase';
@@ -46,8 +48,23 @@ function App() {
   const [accounts, setAccounts] = useState([]);
   const [prefilledMedia, setPrefilledMedia] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [dbUser, setDbUser] = useState(null);
 
-  const GOOGLE_DRIVE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby_vsf3Ya5oFFISuPLjqH9WZ5vP5QMSqZvxfZNxgpF81vLV0paRwPUE28z60YUY8mfXKg/exec';
+  // Sync real-time user data from Firestore
+  useEffect(() => {
+    if (!user) {
+      setDbUser(null);
+      return;
+    }
+    const unsubscribe = onSnapshot(doc(db, 'users', user.id), (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        setDbUser({ id: docSnapshot.id, ...docSnapshot.data() });
+      }
+    });
+    return unsubscribe;
+  }, [user]);
+
+  const GOOGLE_DRIVE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxxUMGU9SnDKZsKWIXFMmZaVBECLfZX17KDFOSmGVqcvrL4V6083daDbV1jf8DhibdUew/exec';
 
   const handleUseMedia = (url) => {
     setPrefilledMedia(url);
@@ -99,7 +116,20 @@ function App() {
       const q = query(collection(db, 'users'), where('email', '==', email));
       const querySnapshot = await getDocs(q);
       if (!querySnapshot.empty) return alert("Email sudah terdaftar!");
-      const docRef = await addDoc(collection(db, 'users'), { name, email, password, createdAt: serverTimestamp() });
+      
+      const docRef = await addDoc(collection(db, 'users'), { 
+        name, 
+        email, 
+        password, 
+        role: 'user',
+        status: 'pending', 
+        storageLimit: 100, 
+        storageUsed: 0,
+        dailyPostLimit: 5,
+        expiresAt: null,
+        createdAt: serverTimestamp() 
+      });
+      // Login directly, the real-time listener will route them to PendingPage
       login({ id: docRef.id, name, email });
     } catch (error) {
       alert("Registration Error: " + error.message);
@@ -291,6 +321,21 @@ function App() {
     return <AuthPage onLogin={handleLogin} onRegister={handleRegister} />;
   }
 
+  if (!dbUser) {
+    return (
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
+        <Rocket size={48} color="var(--primary)" className="animate-bounce" />
+      </div>
+    );
+  }
+
+  // Gates for specific account status
+  if (dbUser.status === 'pending') return <PendingPage onLogout={logout} />;
+  if (dbUser.status === 'rejected') return <RejectedPage onLogout={logout} />;
+  if (dbUser.expiresAt && new Date() > (dbUser.expiresAt.toDate ? dbUser.expiresAt.toDate() : new Date(dbUser.expiresAt))) {
+    return <ExpiredPage onLogout={logout} />;
+  }
+
   return (
     <div className="layout">
       <Sidebar
@@ -299,6 +344,7 @@ function App() {
         onLogout={logout}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
+        user={dbUser}
       />
 
       <main className="main-content">
@@ -313,20 +359,7 @@ function App() {
 
           </div>
 
-          <div className="header-actions" style={{ display: 'flex', gap: '1.2rem', alignItems: 'center' }}>
-            <div className="input-group" style={{ marginBottom: 0, width: '280px', position: 'relative' }}>
-              <input type="text" placeholder="Cari statistik..." style={{ paddingLeft: '2.8rem', background: '#fff', border: '1px solid #e2e8f0' }} />
-              <Search size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-            </div>
-            <button className="btn btn-primary" onClick={() => setActivePage('scheduler')}>
-              <Plus size={20} />
-              <span>Buat Post</span>
-            </button>
-            <div className="user-profile">
-              <div className="avatar"></div>
-              <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{user.name || user.email.split('@')[0]}</span>
-            </div>
-          </div>
+
         </header>
 
         <AnimatePresence mode="wait">
@@ -337,7 +370,7 @@ function App() {
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.2 }}
           >
-            {activePage === 'dashboard' && <Dashboard posts={posts} onUseMedia={handleUseMedia} />}
+            {activePage === 'dashboard' && <Dashboard posts={posts} onUseMedia={handleUseMedia} user={dbUser} onViewAll={() => setActivePage('queue')} />}
             {activePage === 'scheduler' && (
               <Scheduler
                 onSchedule={handleSchedulePost}
@@ -345,9 +378,10 @@ function App() {
                 onClearInitial={() => setPrefilledMedia(null)}
                 accounts={accounts}
                 posts={posts}
+                user={dbUser}
               />
             )}
-            {activePage === 'queue' && <ScheduleList posts={posts} onDelete={handleDeletePost} onUpdate={handleUpdatePost} onUseMedia={handleUseMedia} />}
+            {activePage === 'queue' && <ScheduleList posts={posts} onDelete={handleDeletePost} onUpdate={handleUpdatePost} onUseMedia={handleUseMedia} user={dbUser} />}
             {activePage === 'accounts' && (
               <Accounts
                 accounts={accounts}
@@ -356,11 +390,14 @@ function App() {
                 onUpdate={handleUpdateAccount}
               />
             )}
-            {activePage === 'media' && <MediaLibrary posts={posts} onUseMedia={handleUseMedia} onDelete={handleDeleteMedia} />}
-            {activePage === 'analytics' && <Analytics />}
+            {activePage === 'media' && <MediaLibrary posts={posts} onUseMedia={handleUseMedia} onDelete={handleDeleteMedia} user={dbUser} />}
+            {activePage === 'admin' && dbUser?.role === 'admin' && (
+              <AdminDashboard scriptUrl={GOOGLE_DRIVE_SCRIPT_URL} />
+            )}
           </motion.div>
         </AnimatePresence>
       </main>
+      <PWAInstallPrompt />
     </div>
   );
 }
