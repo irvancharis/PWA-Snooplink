@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { auth } from '../firebase';
 import { signInWithPopup, GoogleAuthProvider, FacebookAuthProvider } from 'firebase/auth';
 
-const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
+const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
   const [showModal, setShowModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -39,6 +39,16 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
     setIsEditing(false);
     setManualMode(false);
     setFormData({ name: '', platform: 'facebook', handle: '', pageId: '', accessToken: '', appId: '', apiSecret: '' });
+  };
+
+  const handleOpenAddModal = () => {
+    const isSuperAdmin = user?.role === 'admin' || user?.email === 'irvancharis@gmail.com';
+    const accountLimit = user?.accountLimit !== undefined ? user.accountLimit : 3;
+    if (!isSuperAdmin && accounts.length >= accountLimit) {
+      alert(`Batas maksimal akun terhubung tercapai! Anda hanya diizinkan menghubungkan maksimal ${accountLimit} akun. Silakan hubungi admin untuk menambah limit.`);
+      return;
+    }
+    setShowModal(true);
   };
 
 
@@ -228,6 +238,36 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
 
   return (
     <div style={{ position: 'relative' }}>
+      {/* Account Limit Notice */}
+      <div style={{ 
+        background: '#f8fafc', 
+        border: '1px solid #e2e8f0', 
+        borderRadius: '16px', 
+        padding: '1.2rem', 
+        marginBottom: '2rem', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '0.8rem'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+          <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--primary)' }}></div>
+          <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-main)' }}>
+            Limit Akun Terhubung: 
+          </span>
+          <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--primary)' }}>
+             {user?.role === 'admin' || user?.email === 'irvancharis@gmail.com' 
+               ? `Terhubung: ${accounts.length} Akun / Limit: Tidak Terbatas` 
+               : `Terhubung: ${accounts.length} Akun / Limit: Maksimal ${user?.accountLimit !== undefined ? user.accountLimit : 3} Akun`
+             }
+          </span>
+        </div>
+        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+          Hubungi Admin untuk upgrade limit platform Anda
+        </span>
+      </div>
+
       <div className="grid">
         {accounts.length === 0 ? (
           <div className="card" style={{ gridColumn: '1/-1', textAlign: 'center', padding: '5rem', background: '#fff', border: '2px dashed #e2e8f0', borderRadius: '32px' }}>
@@ -236,8 +276,8 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
              </div>
              <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '0.5rem' }}>Belum Ada Akun</h3>
              <p style={{ color: 'var(--text-muted)', marginBottom: '2rem', fontWeight: 500 }}>Hubungkan akun developer Anda untuk mulai menjadwalkan postingan.</p>
-             <button className="btn btn-primary" style={{ margin: '0 auto' }} onClick={() => setShowModal(true)}>
-               <Plus size={20} /> Hubungkan Akun Pertama
+             <button className="btn btn-primary" style={{ margin: '0 auto' }} onClick={handleOpenAddModal}>
+                <Plus size={20} /> Hubungkan Akun Pertama
              </button>
           </div>
         ) : (
@@ -308,7 +348,7 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate }) => {
               whileHover={{ scale: 1.02 }}
               className="card" 
               style={{ border: '2px dashed #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', minHeight: '180px', background: 'transparent', borderRadius: '24px' }}
-              onClick={() => setShowModal(true)}
+              onClick={handleOpenAddModal}
             >
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', color: 'var(--text-muted)' }}>
                 <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

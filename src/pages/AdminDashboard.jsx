@@ -107,6 +107,17 @@ const AdminDashboard = ({ scriptUrl }) => {
     }
   };
 
+  const handleEditAccountLimit = async (user) => {
+    const limit = prompt(`Masukkan limit platform/akun terhubung untuk ${user.name}:`, user.accountLimit !== undefined ? user.accountLimit : 3);
+    if (limit === null) return;
+    
+    try {
+      await updateDoc(doc(db, 'users', user.id), { accountLimit: Number(limit) });
+    } catch (e) {
+      alert("Error: " + e.message);
+    }
+  };
+
   const filteredUsers = users.filter(u => u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || u.email?.toLowerCase().includes(searchTerm.toLowerCase()));
 
   if (loading) return <div style={{ padding: '2rem' }}>Memuat data pengguna...</div>;
@@ -132,6 +143,7 @@ const AdminDashboard = ({ scriptUrl }) => {
               <th style={{ padding: '1.2rem', textAlign: 'left', fontSize: '0.8rem', color: '#64748b' }}>PENGGUNA</th>
               <th style={{ padding: '1.2rem', textAlign: 'left', fontSize: '0.8rem', color: '#64748b' }}>STATUS</th>
               <th style={{ padding: '1.2rem', textAlign: 'left', fontSize: '0.8rem', color: '#64748b' }}>PENYIMPANAN</th>
+              <th style={{ padding: '1.2rem', textAlign: 'left', fontSize: '0.8rem', color: '#64748b' }}>LIMIT PLATFORM</th>
               <th style={{ padding: '1.2rem', textAlign: 'left', fontSize: '0.8rem', color: '#64748b' }}>LIMIT POST/HARI</th>
               <th style={{ padding: '1.2rem', textAlign: 'left', fontSize: '0.8rem', color: '#64748b' }}>MASA AKTIF</th>
               <th style={{ padding: '1.2rem', textAlign: 'right', fontSize: '0.8rem', color: '#64748b' }}>AKSI</th>
@@ -161,6 +173,18 @@ const AdminDashboard = ({ scriptUrl }) => {
                   </div>
                   <div style={{ width: '100%', height: '6px', background: '#e2e8f0', borderRadius: '3px', marginTop: '0.5rem' }}>
                     <div style={{ width: `${Math.min(((u.storageUsed || 0) / (u.storageLimit || 100)) * 100, 100)}%`, height: '100%', background: 'var(--primary)', borderRadius: '3px' }}></div>
+                  </div>
+                </td>
+                <td style={{ padding: '1.2rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+                      {u.role === 'admin' || u.email === 'irvancharis@gmail.com' ? 'Tidak Terbatas' : `${u.accountLimit !== undefined ? u.accountLimit : 3} Akun`}
+                    </span>
+                    {u.role !== 'admin' && (
+                      <button onClick={() => handleEditAccountLimit(u)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0 }} title="Ubah Limit Platform">
+                        <Settings size={14} />
+                      </button>
+                    )}
                   </div>
                 </td>
                 <td style={{ padding: '1.2rem' }}>
@@ -204,7 +228,7 @@ const AdminDashboard = ({ scriptUrl }) => {
               </tr>
             ))}
             {filteredUsers.length === 0 && (
-              <tr><td colSpan="5" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Tidak ada pengguna ditemukan.</td></tr>
+              <tr><td colSpan="7" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Tidak ada pengguna ditemukan.</td></tr>
             )}
           </tbody>
         </table>

@@ -338,6 +338,12 @@ function App() {
 
   const handleAddAccount = async (accData) => {
     if (!user) return;
+    const isSuperAdmin = dbUser?.role === 'admin' || dbUser?.email === 'irvancharis@gmail.com';
+    const accountLimit = dbUser?.accountLimit !== undefined ? dbUser.accountLimit : 3;
+    if (!isSuperAdmin && accounts.length >= accountLimit) {
+      alert(`Batas maksimal akun terhubung tercapai! Anda hanya diizinkan menghubungkan maksimal ${accountLimit} akun.`);
+      return;
+    }
     try {
       await addDoc(collection(db, 'social_accounts'), {
         ...accData,
@@ -494,6 +500,7 @@ function App() {
                 onAdd={handleAddAccount}
                 onDelete={handleDeleteAccount}
                 onUpdate={handleUpdateAccount}
+                user={dbUser}
               />
             )}
             {activePage === 'media' && <MediaLibrary posts={posts} onUseMedia={handleUseMedia} onDelete={handleDeleteMedia} user={dbUser} />}
