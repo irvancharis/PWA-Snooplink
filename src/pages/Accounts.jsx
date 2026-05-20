@@ -646,41 +646,43 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {alertModal.show && createPortal(
-          <div style={{ 
-            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', 
-            background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(8px)', 
-            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 11000 
-          }}>
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              className="card" 
-              style={{ width: '450px', padding: '2.5rem', textAlign: 'center', border: 'none', background: '#fff', borderRadius: '28px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.2)' }}
-            >
-              <div style={{ width: '64px', height: '64px', background: '#fffbeb', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', color: '#d97706', border: '1px solid #fde68a', flexShrink: 0 }}>
-                <Info size={32} style={{ display: 'block' }} />
-              </div>
-              <h3 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '0.8rem' }}>
-                {alertModal.title}
-              </h3>
-              <p style={{ color: 'var(--text-muted)', marginBottom: '2rem', fontSize: '0.95rem', lineHeight: '1.6', fontWeight: 500 }}>
-                {alertModal.message}
-              </p>
-              <button 
-                className="btn btn-primary" 
-                style={{ width: '100%', justifyContent: 'center', fontSize: '1rem', padding: '0.9rem', borderRadius: '14px', margin: '0 auto' }}
-                onClick={() => setAlertModal({ show: false, title: '', message: '' })}
+      {createPortal(
+        <AnimatePresence>
+          {alertModal.show && (
+            <div style={{ 
+              position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', 
+              background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(8px)', 
+              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 11000 
+            }}>
+              <motion.div 
+                initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                className="card" 
+                style={{ width: '450px', padding: '2.5rem', textAlign: 'center', border: 'none', background: '#fff', borderRadius: '28px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.2)' }}
               >
-                Mengerti
-              </button>
-            </motion.div>
-          </div>,
-          document.body
-        )}
-      </AnimatePresence>
+                <div style={{ width: '64px', height: '64px', background: '#fffbeb', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', color: '#d97706', border: '1px solid #fde68a', flexShrink: 0 }}>
+                  <Info size={32} style={{ display: 'block' }} />
+                </div>
+                <h3 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '0.8rem' }}>
+                  {alertModal.title}
+                </h3>
+                <p style={{ color: 'var(--text-muted)', marginBottom: '2rem', fontSize: '0.95rem', lineHeight: '1.6', fontWeight: 500 }}>
+                  {alertModal.message}
+                </p>
+                <button 
+                  className="btn btn-primary" 
+                  style={{ width: '100%', justifyContent: 'center', fontSize: '1rem', padding: '0.9rem', borderRadius: '14px', margin: '0 auto' }}
+                  onClick={() => setAlertModal({ show: false, title: '', message: '' })}
+                >
+                  Mengerti
+                </button>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 };
