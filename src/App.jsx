@@ -318,6 +318,7 @@ function App() {
           postDoc.ytTitle = postData.ytTitle;
           postDoc.ytTags = postData.ytTags || '';
           postDoc.ytPrivacy = postData.ytPrivacy || 'public';
+          postDoc.ytCategoryId = postData.ytCategoryId || '22';
           if (finalYtThumbnailUrl) {
             postDoc.ytThumbnail = finalYtThumbnailUrl;
           }
