@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, X, Info, ShieldCheck, HelpCircle, ExternalLink, Trash2, Edit3, MoreVertical, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { auth } from '../firebase';
@@ -646,11 +647,11 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
       </AnimatePresence>
 
       <AnimatePresence>
-        {alertModal.show && (
+        {alertModal.show && createPortal(
           <div style={{ 
             position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', 
             background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(8px)', 
-            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 11000 
           }}>
             <motion.div 
               initial={{ scale: 0.95, opacity: 0, y: 20 }}
@@ -659,8 +660,8 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
               className="card" 
               style={{ width: '450px', padding: '2.5rem', textAlign: 'center', border: 'none', background: '#fff', borderRadius: '28px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.2)' }}
             >
-              <div style={{ width: '64px', height: '64px', background: '#fffbeb', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', color: '#d97706', border: '1px solid #fde68a' }}>
-                <Info size={32} />
+              <div style={{ width: '64px', height: '64px', background: '#fffbeb', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', color: '#d97706', border: '1px solid #fde68a', flexShrink: 0 }}>
+                <Info size={32} style={{ display: 'block' }} />
               </div>
               <h3 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '0.8rem' }}>
                 {alertModal.title}
@@ -676,7 +677,8 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
                 Mengerti
               </button>
             </motion.div>
-          </div>
+          </div>,
+          document.body
         )}
       </AnimatePresence>
     </div>
