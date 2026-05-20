@@ -298,6 +298,24 @@ function App() {
       }
 
       if (onProgress) onProgress({ percent: 100, stage: 'Menyimpan jadwal ke database...' });
+
+      // Calculate size of uploaded files to update storageUsed
+      let uploadedBytes = 0;
+      if (postData.file) {
+        uploadedBytes += postData.file.size;
+      }
+      if (postData.ytThumbnailFile) {
+        uploadedBytes += postData.ytThumbnailFile.size;
+      }
+      if (uploadedBytes > 0) {
+        const addedSizeInMb = uploadedBytes / (1024 * 1024);
+        const currentUsed = dbUser?.storageUsed || 0;
+        const newUsed = currentUsed + addedSizeInMb;
+        await updateDoc(doc(db, 'users', user.id), {
+          storageUsed: Number(newUsed.toFixed(2))
+        });
+      }
+
       const { file, ytThumbnailFile, accounts: targetAccounts, ...sharedData } = postData;
 
       // Buat dokumen post terpisah untuk setiap akun yang dipilih
@@ -394,6 +412,16 @@ function App() {
 
       // 2. Hapus dari Firestore
       await deleteDoc(doc(db, 'posts', post.id));
+
+      // 3. Decrement storageUsed
+      if (post.fileSize) {
+        const deletedSizeInMb = post.fileSize / (1024 * 1024);
+        const currentUsed = dbUser?.storageUsed || 0;
+        const newUsed = Math.max(0, currentUsed - deletedSizeInMb);
+        await updateDoc(doc(db, 'users', user.id), {
+          storageUsed: Number(newUsed.toFixed(2))
+        });
+      }
       alert("Media berhasil dihapus.");
     } catch (error) {
       console.error(error);

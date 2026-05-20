@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Image as ImageIcon, Send, Grid, X, Video, FileImage, CheckCircle2 } from 'lucide-react';
+import { Image as ImageIcon, Send, Grid, X, Video, FileImage, CheckCircle2, Info } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, user }) => {
   const [content, setContent] = useState('');
@@ -9,6 +10,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
   const [time, setTime] = useState('');
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [alertModal, setAlertModal] = useState({ show: false, title: '', message: '' });
   
   // YouTube specific state
   const [ytTitle, setYtTitle] = useState('');
@@ -72,7 +74,11 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
     const selectedFile = e.target.files[0];
     if (selectedFile) {
       if (selectedFile.size > 200 * 1024 * 1024) {
-        alert("File terlalu besar! Maksimal 200MB.");
+        setAlertModal({
+          show: true,
+          title: "File Terlalu Besar",
+          message: "Ukuran file media Anda terlalu besar! Batas maksimal pengunggahan berkas adalah 200MB."
+        });
         return;
       }
       setFile(selectedFile);
@@ -87,22 +93,68 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (selectedAccountIds.length === 0) return alert("Harap pilih setidaknya satu akun tujuan!");
+    if (selectedAccountIds.length === 0) {
+      setAlertModal({
+        show: true,
+        title: "Akun Belum Dipilih",
+        message: "Harap pilih setidaknya satu akun sosial media tujuan postingan Anda!"
+      });
+      return;
+    }
     
     if (hasYoutubeSelected) {
-      if (!ytTitle || !content || !date || !time) return alert("Harap isi Judul YouTube, Deskripsi, Tanggal, dan Waktu!");
+      if (!ytTitle || !content || !date || !time) {
+        setAlertModal({
+          show: true,
+          title: "Formulir Belum Lengkap",
+          message: "Harap isi Judul YouTube, Deskripsi, Tanggal, dan Waktu penjadwalan!"
+        });
+        return;
+      }
     } else {
-      if (!content || !date || !time) return alert("Harap isi Konten, Tanggal, dan Waktu!");
+      if (!content || !date || !time) {
+        setAlertModal({
+          show: true,
+          title: "Formulir Belum Lengkap",
+          message: "Harap isi Konten deskripsi, Tanggal, dan Waktu penjadwalan!"
+        });
+        return;
+      }
+    }
+    
+    const isSuperAdmin = user?.role === 'admin' || user?.email === 'irvancharis@gmail.com';
+
+    // Storage capacity limit validation
+    const storageLimit = user?.storageLimit !== undefined ? user.storageLimit : 100; // in MB
+    const currentStorageUsed = user?.storageUsed || 0; // in MB
+    let incomingSizeInMb = 0;
+    if (file) {
+      incomingSizeInMb += file.size / (1024 * 1024);
+    }
+    if (ytThumbnailFile) {
+      incomingSizeInMb += ytThumbnailFile.size / (1024 * 1024);
+    }
+
+    if (!isSuperAdmin && (currentStorageUsed + incomingSizeInMb > storageLimit)) {
+      setAlertModal({
+        show: true,
+        title: "Penyimpanan Penuh",
+        message: `Kapasitas penyimpanan Anda tidak mencukupi! Anda mencoba mengunggah file sebesar ${incomingSizeInMb.toFixed(2)} MB, sedangkan sisa penyimpanan Anda hanya ${(storageLimit - currentStorageUsed).toFixed(2)} MB (Limit Paket Anda: ${storageLimit} MB). Silakan hapus beberapa media di Galeri atau hubungi admin untuk meningkatkan kapasitas.`
+      });
+      return;
     }
     
     // Daily scheduling limit validation
-    const isSuperAdmin = user?.role === 'admin' || user?.email === 'irvancharis@gmail.com';
     const dailyLimit = user?.dailyPostLimit !== undefined ? user.dailyPostLimit : 5;
     const targetDate = date; // e.g. "2026-05-18"
     const postsOnSameDate = (posts || []).filter(p => p.time && p.time.startsWith(targetDate) && p.status !== 'Failed' && p.status !== 'Deleted');
 
     if (!isSuperAdmin && (postsOnSameDate.length + selectedAccountIds.length > dailyLimit)) {
-      alert(`Batas posting harian terlampaui! Anda hanya diizinkan menjadwalkan maksimal ${dailyLimit} postingan per hari. Anda saat ini memiliki ${postsOnSameDate.length} postingan pada ${targetDate}, dan mencoba menambahkan ${selectedAccountIds.length} postingan baru.`);
+      setAlertModal({
+        show: true,
+        title: "Batas Posting Terlampaui",
+        message: `Batas posting harian terlampaui! Anda hanya diizinkan menjadwalkan maksimal ${dailyLimit} postingan per hari. Anda saat ini memiliki ${postsOnSameDate.length} postingan pada ${targetDate}, dan mencoba menambahkan ${selectedAccountIds.length} postingan baru.`
+      });
       return;
     }
     
@@ -596,6 +648,41 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
         </div>,
         document.body
       )}
+
+      <AnimatePresence>
+        {alertModal.show && (
+          <div style={{ 
+            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', 
+            background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(8px)', 
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 11000 
+          }}>
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="card" 
+              style={{ width: '450px', padding: '2.5rem', textAlign: 'center', border: 'none', background: '#fff', borderRadius: '28px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.2)' }}
+            >
+              <div style={{ width: '64px', height: '64px', background: '#fffbeb', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', color: '#d97706', border: '1px solid #fde68a' }}>
+                <Info size={32} />
+              </div>
+              <h3 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '0.8rem' }}>
+                {alertModal.title}
+              </h3>
+              <p style={{ color: 'var(--text-muted)', marginBottom: '2rem', fontSize: '0.95rem', lineHeight: '1.6', fontWeight: 500 }}>
+                {alertModal.message}
+              </p>
+              <button 
+                className="btn btn-primary" 
+                style={{ width: '100%', justifyContent: 'center', fontSize: '1rem', padding: '0.9rem', borderRadius: '14px', margin: '0 auto' }}
+                onClick={() => setAlertModal({ show: false, title: '', message: '' })}
+              >
+                Mengerti
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
