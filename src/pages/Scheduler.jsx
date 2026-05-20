@@ -75,12 +75,14 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
     if (selectedFile) {
       const isSuperAdmin = user?.role === 'admin' || user?.email === 'irvancharis@gmail.com';
       const storageLimit = user?.storageLimit !== undefined ? user.storageLimit : 100; // in MB
+      const storageUsed = user?.storageUsed || 0; // in MB
+      const remainingStorageInMb = Math.max(0, storageLimit - storageUsed);
       
-      if (!isSuperAdmin && selectedFile.size > storageLimit * 1024 * 1024) {
+      if (!isSuperAdmin && selectedFile.size > remainingStorageInMb * 1024 * 1024) {
         setAlertModal({
           show: true,
-          title: "File Melebihi Kapasitas",
-          message: `Ukuran file media Anda terlalu besar (${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB)! Batas maksimal pengunggahan berkas sesuai limit kapasitas penyimpanan paket Anda adalah ${storageLimit} MB.`
+          title: "Sisa Penyimpanan Tidak Cukup",
+          message: `Ukuran file media Anda (${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB) melebihi sisa kapasitas penyimpanan Anda yang hanya sebesar ${remainingStorageInMb.toFixed(2)} MB (Limit Paket: ${storageLimit} MB, Terpakai: ${storageUsed.toFixed(2)} MB).`
         });
         return;
       }
