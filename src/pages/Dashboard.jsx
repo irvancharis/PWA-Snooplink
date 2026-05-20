@@ -91,7 +91,7 @@ const Dashboard = ({ posts: allPosts, onUseMedia, user, onViewAll }) => {
                   <p style={{ fontWeight: 500 }}>Belum ada aktivitas. Postingan Anda akan muncul di sini.</p>
                 </td></tr>
               ) : (
-                posts.map(post => (
+                posts.slice(0, 5).map(post => (
                   <tr key={post.id} style={{ borderBottom: '1px solid var(--border-color)', transition: '0.2s', cursor: 'pointer' }} className="table-row-hover" onClick={() => setSelectedPost(post)}>
                     <td style={{ padding: '1.2rem 1.5rem' }}>
                       <div style={{ width: '48px', height: '48px', borderRadius: '10px', overflow: 'hidden', background: isVideo(post) ? '#eef2ff' : '#f0fdf4', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
