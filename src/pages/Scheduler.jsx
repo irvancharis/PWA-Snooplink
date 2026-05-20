@@ -273,8 +273,8 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
             )}
 
             {hasYoutubeSelected && (
-              <div style={{ display: 'flex', gap: '1.5rem', marginTop: '1.5rem' }}>
-                <div className="input-group" style={{ flex: 2, marginBottom: 0 }}>
+              <>
+                <div className="input-group" style={{ marginTop: '1.5rem' }}>
                   <label className="stat-label">Tags (Pisahkan dengan koma)</label>
                   <input 
                     type="text" 
@@ -284,43 +284,45 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
                     onChange={(e) => setYtTags(e.target.value)}
                   />
                 </div>
-                <div className="input-group" style={{ flex: 1.5, marginBottom: 0 }}>
-                  <label className="stat-label">Kategori YouTube</label>
-                  <select 
-                    style={{ marginTop: '0.5rem', background: '#fff', width: '100%', border: '1px solid #e2e8f0' }}
-                    value={ytCategoryId}
-                    onChange={(e) => setYtCategoryId(e.target.value)}
-                  >
-                    <option value="22">Orang & Blog</option>
-                    <option value="20">Game</option>
-                    <option value="10">Musik</option>
-                    <option value="24">Hiburan</option>
-                    <option value="27">Pendidikan</option>
-                    <option value="28">Sains & Teknologi</option>
-                    <option value="1">Film & Animasi</option>
-                    <option value="2">Otomotif</option>
-                    <option value="15">Hewan & Peliharaan</option>
-                    <option value="17">Olahraga</option>
-                    <option value="19">Perjalanan & Acara</option>
-                    <option value="23">Komedi</option>
-                    <option value="25">Berita & Politik</option>
-                    <option value="26">Cara & Gaya</option>
-                    <option value="29">Nirlaba & Aktivisme</option>
-                  </select>
+                <div style={{ display: 'flex', gap: '1.5rem', marginTop: '1.5rem' }}>
+                  <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                    <label className="stat-label">Kategori YouTube</label>
+                    <select 
+                      style={{ marginTop: '0.5rem', background: '#fff', width: '100%', border: '1px solid #e2e8f0' }}
+                      value={ytCategoryId}
+                      onChange={(e) => setYtCategoryId(e.target.value)}
+                    >
+                      <option value="22">Orang & Blog</option>
+                      <option value="20">Game</option>
+                      <option value="10">Musik</option>
+                      <option value="24">Hiburan</option>
+                      <option value="27">Pendidikan</option>
+                      <option value="28">Sains & Teknologi</option>
+                      <option value="1">Film & Animasi</option>
+                      <option value="2">Otomotif</option>
+                      <option value="15">Hewan & Peliharaan</option>
+                      <option value="17">Olahraga</option>
+                      <option value="19">Perjalanan & Acara</option>
+                      <option value="23">Komedi</option>
+                      <option value="25">Berita & Politik</option>
+                      <option value="26">Cara & Gaya</option>
+                      <option value="29">Nirlaba & Aktivisme</option>
+                    </select>
+                  </div>
+                  <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                    <label className="stat-label">Visibilitas</label>
+                    <select 
+                      style={{ marginTop: '0.5rem', background: '#fff', width: '100%', border: '1px solid #e2e8f0' }}
+                      value={ytPrivacy}
+                      onChange={(e) => setYtPrivacy(e.target.value)}
+                    >
+                      <option value="public">Publik</option>
+                      <option value="unlisted">Unlisted</option>
+                      <option value="private">Privat</option>
+                    </select>
+                  </div>
                 </div>
-                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
-                  <label className="stat-label">Visibilitas</label>
-                  <select 
-                    style={{ marginTop: '0.5rem', background: '#fff', width: '100%', border: '1px solid #e2e8f0' }}
-                    value={ytPrivacy}
-                    onChange={(e) => setYtPrivacy(e.target.value)}
-                  >
-                    <option value="public">Publik</option>
-                    <option value="unlisted">Unlisted</option>
-                    <option value="private">Privat</option>
-                  </select>
-                </div>
-              </div>
+              </>
             )}
           </div>
         </div>
