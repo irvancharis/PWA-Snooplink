@@ -14,10 +14,18 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
   const [formData, setFormData] = useState({
     name: '', platform: 'facebook', handle: '', pageId: '', accessToken: '', appId: '', apiSecret: ''
   });
+  const [alertModal, setAlertModal] = useState({ show: false, title: '', message: '' });
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!formData.name || !formData.accessToken) return alert("Nama Akun dan Access Token wajib diisi!");
+    if (!formData.name || !formData.accessToken) {
+      setAlertModal({
+        show: true,
+        title: "Formulir Tidak Lengkap",
+        message: "Nama Akun dan Access Token wajib diisi!"
+      });
+      return;
+    }
     
     if (isEditing) {
       onUpdate(formData.id, formData);
@@ -45,7 +53,11 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
     const isSuperAdmin = user?.role === 'admin' || user?.email === 'irvancharis@gmail.com';
     const accountLimit = user?.accountLimit !== undefined ? user.accountLimit : 3;
     if (!isSuperAdmin && accounts.length >= accountLimit) {
-      alert(`Batas maksimal akun terhubung tercapai! Anda hanya diizinkan menghubungkan maksimal ${accountLimit} akun. Silakan hubungi admin untuk menambah limit.`);
+      setAlertModal({
+        show: true,
+        title: "Batas Limit Tercapai",
+        message: `Batas maksimal akun terhubung tercapai! Anda hanya diizinkan menghubungkan maksimal ${accountLimit} akun. Silakan hubungi admin untuk menambah limit.`
+      });
       return;
     }
     setShowModal(true);
@@ -110,7 +122,11 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
               name: prev.name || 'Channel YouTube'
             }));
           } else {
-            alert('PENTING: Gagal mendapatkan Refresh Token. Jika pengguna pernah login sebelumnya, mereka harus mencabut izin aplikasi di akun Google mereka terlebih dahulu.');
+            setAlertModal({
+              show: true,
+              title: "Token Tidak Lengkap",
+              message: "Gagal mendapatkan Refresh Token. Jika pengguna pernah login sebelumnya, mereka harus mencabut izin Snooplink di pengaturan Google Account terlebih dahulu sebelum mencoba menghubungkan ulang."
+            });
           }
         }
       } catch (e) {
@@ -141,11 +157,19 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
       if (data.data && data.data.length > 0) {
         setFbPages(data.data);
       } else {
-        alert("Tidak ada Halaman Facebook yang ditemukan di akun ini.");
+        setAlertModal({
+          show: true,
+          title: "Halaman Tidak Ditemukan",
+          message: "Tidak ada Halaman Facebook yang ditemukan terikat pada akun Facebook ini."
+        });
       }
     } catch (error) {
       console.error(error);
-      alert("Gagal login dengan Facebook: " + error.message);
+      setAlertModal({
+        show: true,
+        title: "Gagal Autentikasi Facebook",
+        message: "Gagal melakukan proses login dengan Facebook: " + error.message
+      });
     } finally {
       setIsFbLoading(false);
     }
@@ -166,10 +190,18 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
           }));
           setFbPages([]);
         } else {
-          alert("Halaman Facebook ini tidak terhubung dengan Akun Instagram Bisnis.");
+          setAlertModal({
+            show: true,
+            title: "Instagram Tidak Terhubung",
+            message: "Halaman Facebook ini tidak terhubung dengan Akun Instagram Bisnis yang aktif."
+          });
         }
       } catch (err) {
-        alert("Gagal mengambil data Instagram.");
+        setAlertModal({
+          show: true,
+          title: "Gagal Mengambil Data",
+          message: "Gagal mengambil data Instagram. Silakan periksa kembali tautan akun Anda."
+        });
       } finally {
         setIsFbLoading(false);
       }
@@ -608,6 +640,41 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
                   </motion.div>
                 )}
               </AnimatePresence>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {alertModal.show && (
+          <div style={{ 
+            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', 
+            background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(8px)', 
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 
+          }}>
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="card" 
+              style={{ width: '450px', padding: '2.5rem', textAlign: 'center', border: 'none', background: '#fff', borderRadius: '28px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.2)' }}
+            >
+              <div style={{ width: '64px', height: '64px', background: '#fffbeb', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', color: '#d97706', border: '1px solid #fde68a' }}>
+                <Info size={32} />
+              </div>
+              <h3 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '0.8rem' }}>
+                {alertModal.title}
+              </h3>
+              <p style={{ color: 'var(--text-muted)', marginBottom: '2rem', fontSize: '0.95rem', lineHeight: '1.6', fontWeight: 500 }}>
+                {alertModal.message}
+              </p>
+              <button 
+                className="btn btn-primary" 
+                style={{ width: '100%', justifyContent: 'center', fontSize: '1rem', padding: '0.9rem', borderRadius: '14px', margin: '0 auto' }}
+                onClick={() => setAlertModal({ show: false, title: '', message: '' })}
+              >
+                Mengerti
+              </button>
             </motion.div>
           </div>
         )}
