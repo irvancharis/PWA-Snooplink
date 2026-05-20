@@ -84,6 +84,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
           title: "Sisa Penyimpanan Tidak Cukup",
           message: `Ukuran file media Anda (${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB) melebihi sisa kapasitas penyimpanan Anda yang hanya sebesar ${remainingStorageInMb.toFixed(2)} MB (Limit Paket: ${storageLimit} MB, Terpakai: ${storageUsed.toFixed(2)} MB).`
         });
+        e.target.value = ''; // Reset the input value so onChange fires next time
         return;
       }
       setFile(selectedFile);
