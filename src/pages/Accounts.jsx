@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, X, Info, ShieldCheck, HelpCircle, ExternalLink, Trash2, Edit3, MoreVertical, CheckCircle2 } from 'lucide-react';
+import { Plus, X, Info, ShieldCheck, HelpCircle, ExternalLink, Trash2, Edit3, MoreVertical, CheckCircle2, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { auth } from '../firebase';
 import { signInWithPopup, GoogleAuthProvider, FacebookAuthProvider } from 'firebase/auth';
@@ -66,7 +66,7 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
 
 
 
-  const handleGoogleLogin = () => {
+  const handleGoogleLogin = (reconnectAcc = null) => {
     const clientId = [
       "687270813688-",
       "8fsdi9hsnjrv8jvna051acs7ofiuk0uo",
@@ -83,7 +83,7 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
       `client_id=${clientId}` +
       `&redirect_uri=${encodeURIComponent(redirectUri)}` +
       `&response_type=code` +
-      `&scope=${encodeURIComponent('https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly')}` +
+      `&scope=${encodeURIComponent('https://www.googleapis.com/auth/youtube https://www.googleapis.com/auth/youtube.readonly')}` +
       `&access_type=offline` +
       `&prompt=consent`;
 
@@ -116,12 +116,19 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
           
           const data = await response.json();
           if (data.refresh_token) {
-            setFormData(prev => ({
-              ...prev, 
-              accessToken: data.refresh_token,
-              pageId: 'YouTube_User',
-              name: prev.name || 'Channel YouTube'
-            }));
+            if (reconnectAcc) {
+              onUpdate(reconnectAcc.id, {
+                ...reconnectAcc,
+                accessToken: data.refresh_token
+              });
+            } else {
+              setFormData(prev => ({
+                ...prev, 
+                accessToken: data.refresh_token,
+                pageId: 'YouTube_User',
+                name: prev.name || 'Channel YouTube'
+              }));
+            }
           } else {
             setAlertModal({
               show: true,
@@ -339,6 +346,15 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
                   </div>
                   
                   <div style={{ display: 'flex', gap: '0.6rem' }}>
+                    {acc.platform === 'youtube' && (
+                      <button 
+                        onClick={() => handleGoogleLogin(acc)}
+                        title="Hubungkan Ulang / Perbarui Token"
+                        style={{ background: '#f0fdf4', border: 'none', width: '34px', height: '34px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#16a34a', cursor: 'pointer', transition: '0.2s' }}
+                      >
+                        <RefreshCw size={15} />
+                      </button>
+                    )}
                     <button 
                       onClick={() => handleEdit(acc)}
                       style={{ background: '#f8fafc', border: 'none', width: '34px', height: '34px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', cursor: 'pointer', transition: '0.2s' }}

@@ -9,7 +9,8 @@ import {
   Settings, 
   LogOut, 
   Rocket,
-  ShieldCheck
+  ShieldCheck,
+  Server
 } from 'lucide-react';
 
 const Sidebar = ({ activePage, onNavigate, onLogout, isOpen, onClose, user }) => {
@@ -19,6 +20,7 @@ const Sidebar = ({ activePage, onNavigate, onLogout, isOpen, onClose, user }) =>
     { id: 'queue', icon: List, label: 'List Schedule' },
     { id: 'media', icon: ImageIcon, label: 'Media Library' },
     { id: 'accounts', icon: Users, label: 'Accounts' },
+    { id: 'servers', icon: Server, label: 'Streaming Server' },
   ];
 
   if (user?.role === 'admin') {

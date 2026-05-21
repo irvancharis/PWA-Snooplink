@@ -13,20 +13,18 @@ import {
   RefreshCw,
   Edit,
   Save,
-  Lock
+  Lock,
+  Layers,
+  FileText,
+  Radio,
+  Repeat
 } from 'lucide-react';
 
-const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia, user }) => {
+const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia, user, onEdit }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [typeFilter, setTypeFilter] = useState('all'); // 'all', 'post', 'live'
   const [selectedPost, setSelectedPost] = useState(null);
-  
-  // Edit States
-  const [editingPost, setEditingPost] = useState(null);
-  const [editContent, setEditContent] = useState('');
-  const [editDate, setEditDate] = useState('');
-  const [editTime, setEditTime] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
 
   const isVideo = (post) => {
     if (post.mediaType?.startsWith('video/')) return true;
@@ -44,54 +42,83 @@ const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia, user }) => {
     return url;
   };
 
-  const handleEditClick = (post) => {
-    setEditingPost(post);
-    setEditContent(post.content);
-    if (post.time) {
-      const [d, t] = post.time.split(' ');
-      setEditDate(d || '');
-      setEditTime(t || '');
-    }
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editContent || !editDate || !editTime) return alert("Harap isi semua kolom!");
-    
-    // Daily scheduling limit validation
-    const isSuperAdmin = user?.role === 'admin' || user?.email === 'irvancharis@gmail.com';
-    const dailyLimit = user?.dailyPostLimit !== undefined ? user.dailyPostLimit : 5;
-    const targetDate = editDate; // e.g. "2026-05-18"
-    const postsOnSameDate = (posts || []).filter(p => p.id !== editingPost.id && p.time && p.time.startsWith(targetDate) && p.status !== 'Failed' && p.status !== 'Deleted');
-
-    if (!isSuperAdmin && postsOnSameDate.length >= dailyLimit) {
-      alert(`Batas posting harian terlampaui! Anda hanya diizinkan menjadwalkan maksimal ${dailyLimit} postingan per hari. Anda sudah memiliki ${postsOnSameDate.length} postingan pada tanggal ${targetDate}.`);
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      await onUpdate(editingPost.id, {
-        content: editContent,
-        time: `${editDate} ${editTime}`,
-        status: 'Scheduled'
-      });
-      setEditingPost(null);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsSaving(false);
-    }
+  const isStatusCompleted = (status) => {
+    const s = status?.toLowerCase();
+    return s === 'published' || s === 'completed' || s === 'complete';
   };
 
   const filteredPosts = posts.filter(post => {
     if (post.status === 'Deleted') return false;
     const matchesSearch = post.content?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'All' || post.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    
+    // Status filter
+    const matchesStatus = statusFilter === 'All' || 
+      post.status?.toLowerCase() === statusFilter.toLowerCase();
+      
+    // Type filter (live, post, recurring)
+    const matchesType = typeFilter === 'all' || 
+      (typeFilter === 'live' && post.postType === 'live') || 
+      (typeFilter === 'post' && post.postType !== 'live' && !post.isRecurring) ||
+      (typeFilter === 'recurring' && post.isRecurring === true);
+      
+    return matchesSearch && matchesStatus && matchesType;
   });
 
   return (
     <>
+      {/* Tab pembeda live, post, dan recurring dengan Flat Icons */}
+      <div style={{ display: 'flex', marginBottom: '1.5rem' }}>
+        <div style={{ 
+          display: 'inline-flex', 
+          background: '#f1f5f9', 
+          padding: '0.3rem', 
+          borderRadius: '12px',
+          gap: '0.2rem',
+          border: '1px solid #e2e8f0',
+          flexWrap: 'wrap'
+        }}>
+          {[
+            { value: 'all', label: 'Semua Jadwal', icon: <Layers size={14} /> },
+            { value: 'post', label: 'Post Reguler', icon: <FileText size={14} /> },
+            { value: 'live', label: 'Live Stream', icon: <Radio size={14} /> },
+            { value: 'recurring', label: 'Jadwal Berulang', icon: <Repeat size={14} /> }
+          ].map(opt => {
+            const isSelected = typeFilter === opt.value;
+            let activeColor = 'var(--text-main)';
+            if (isSelected) {
+              if (opt.value === 'post') activeColor = 'var(--primary)';
+              else if (opt.value === 'live') activeColor = '#ef4444';
+              else if (opt.value === 'recurring') activeColor = '#10b981';
+            }
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setTypeFilter(opt.value)}
+                style={{
+                  padding: '0.5rem 1.1rem',
+                  border: 'none',
+                  background: isSelected ? '#fff' : 'transparent',
+                  color: isSelected ? activeColor : 'var(--text-muted)',
+                  fontWeight: 700,
+                  borderRadius: '9px',
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  boxShadow: isSelected ? '0 2px 6px rgba(0,0,0,0.05)' : 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem'
+                }}
+              >
+                {opt.icon}
+                <span>{opt.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="list-filters" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', gap: '1.5rem' }}>
         <div className="list-filters-inner" style={{ display: 'flex', gap: '1rem', flex: 1 }}>
           <div className="input-group search-group" style={{ marginBottom: 0, flex: 1, position: 'relative', maxWidth: '400px' }}>
@@ -112,6 +139,8 @@ const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia, user }) => {
             <option value="All">Semua Status</option>
             <option value="Scheduled">Scheduled</option>
             <option value="Published">Published</option>
+            <option value="Completed">Completed</option>
+            <option value="Failed">Failed</option>
           </select>
         </div>
       </div>
@@ -158,7 +187,26 @@ const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia, user }) => {
                            <i className={`fab fa-${post.platform === 'facebook' ? 'facebook-f' : post.platform}`}></i>
                         </div>
                         <div>
-                          <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-main)' }}>{post.accountName || 'Social Account'}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-main)' }}>{post.accountName || 'Social Account'}</div>
+                            {post.postType === 'live' && (
+                              <span style={{ 
+                                background: '#fee2e2', 
+                                color: '#ef4444', 
+                                fontSize: '0.65rem', 
+                                padding: '0.1rem 0.4rem', 
+                                borderRadius: '6px', 
+                                fontWeight: 850,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.2rem',
+                                border: '1px solid #fca5a5'
+                              }}>
+                                <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#ef4444', display: 'inline-block' }} />
+                                LIVE
+                              </span>
+                            )}
+                          </div>
                           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>{post.platform}</div>
                         </div>
                       </div>
@@ -171,7 +219,20 @@ const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia, user }) => {
                     <td style={{ padding: '1.2rem 1.5rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                         <Clock size={14} />
-                        <span>{post.time}</span>
+                        {post.isRecurring ? (
+                          <span style={{ fontWeight: 650, color: 'var(--primary)' }}>
+                            <Repeat size={12} style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: '0.3rem' }} />
+                            Setiap {post.daysOfWeek?.map(d => {
+                              const days = {
+                                'Monday': 'Senin', 'Tuesday': 'Selasa', 'Wednesday': 'Rabu',
+                                'Thursday': 'Kamis', 'Friday': 'Jumat', 'Saturday': 'Sabtu', 'Sunday': 'Minggu'
+                              };
+                              return days[d] || d;
+                            }).join(', ')} pukul {post.scheduledTime}
+                          </span>
+                        ) : (
+                          <span>{post.time}</span>
+                        )}
                       </div>
                     </td>
                     <td style={{ padding: '1.2rem 1.5rem' }}>
@@ -188,10 +249,10 @@ const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia, user }) => {
                           borderRadius: '20px',
                           fontSize: '0.7rem',
                           fontWeight: 700,
-                          background: post.status === 'Published' ? '#dcfce7' : (post.status === 'Error' ? '#fee2e2' : '#e0e7ff'),
-                          color: post.status === 'Published' ? '#166534' : (post.status === 'Error' ? '#991b1b' : '#3730a3')
+                          background: isStatusCompleted(post.status) ? '#dcfce7' : (post.status === 'Error' ? '#fee2e2' : '#e0e7ff'),
+                          color: isStatusCompleted(post.status) ? '#166534' : (post.status === 'Error' ? '#991b1b' : '#3730a3')
                         }}>
-                          {post.status === 'Published' ? <CheckCircle2 size={12} /> : <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'currentColor' }}></div>}
+                          {isStatusCompleted(post.status) ? <CheckCircle2 size={12} /> : <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'currentColor' }}></div>}
                           {post.status.toUpperCase()}
                         </div>
                         {post.status === 'Error' && post.error_log && (
@@ -203,17 +264,17 @@ const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia, user }) => {
                     </td>
                     <td style={{ padding: '1.2rem 1.5rem' }}>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        {post.status !== 'Published' && (
+                        {!isStatusCompleted(post.status) && (
                           <button 
                             className="btn" 
                             style={{ padding: '0.5rem', background: '#e0e7ff', color: 'var(--primary)', borderRadius: '8px' }}
-                            onClick={() => handleEditClick(post)}
+                            onClick={() => onEdit(post)}
                             title="Edit Jadwal"
                           >
                             <Edit size={16} />
                           </button>
                         )}
-                        {post.status !== 'Published' ? (
+                        {!isStatusCompleted(post.status) ? (
                           <button 
                             className="btn" 
                             style={{ padding: '0.5rem', background: '#fee2e2', color: '#ef4444', borderRadius: '8px' }}
@@ -225,7 +286,7 @@ const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia, user }) => {
                         ) : (
                           <div 
                             style={{ padding: '0.5rem', color: '#94a3b8', display: 'flex', justifyContent: 'center', cursor: 'not-allowed' }}
-                            title="Riwayat tayang tidak dapat dihapus."
+                            title="Jadwal yang sudah selesai/tayang tidak dapat dihapus atau diedit."
                           >
                             <Lock size={16} />
                           </div>
@@ -284,69 +345,77 @@ const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia, user }) => {
               )}
             </div>
 
-            <div style={{ padding: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ flex: 1, marginRight: '2rem' }}>
-                <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '0.4rem' }}>Detail Postingan</h3>
-                <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>{selectedPost.content}</p>
+            <div style={{ padding: '2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ flex: 1, marginRight: '2rem' }}>
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '0.4rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    {selectedPost.postType === 'live' && <Radio size={16} color="#ef4444" />}
+                    {selectedPost.postType === 'live' ? 'Detail Live Stream' : 'Detail Postingan'}
+                  </h3>
+                  {selectedPost.ytTitle && (
+                    <div style={{ fontWeight: 750, fontSize: '1rem', color: 'var(--text-main)', marginBottom: '0.6rem' }}>
+                      Judul: {selectedPost.ytTitle}
+                    </div>
+                  )}
+                  <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{selectedPost.content}</p>
+
+                  {selectedPost.postType === 'live' && (
+                    <div style={{ 
+                      marginTop: '1.5rem', 
+                      background: '#f8fafc', 
+                      border: '1px solid #e2e8f0', 
+                      padding: '1rem', 
+                      borderRadius: '12px',
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: '1rem',
+                      fontSize: '0.85rem'
+                    }}>
+                      <div>
+                        <strong style={{ color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>Mode Stream Key:</strong>
+                        <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>
+                          {selectedPost.streamKeyMode === 'auto' ? 'Buat Otomatis (Auto)' : 'Manual (RTMP)'}
+                        </span>
+                      </div>
+                      <div>
+                        <strong style={{ color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>Durasi Live:</strong>
+                        <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                          {selectedPost.liveDuration === '24/7' ? (
+                            <>
+                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444', display: 'inline-block' }} />
+                              24/7 Non-stop
+                            </>
+                          ) : `${selectedPost.liveDuration} Menit`}
+                        </span>
+                      </div>
+                      {selectedPost.streamKey && (
+                        <div style={{ gridColumn: '1 / -1' }}>
+                          <strong style={{ color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>Stream Key:</strong>
+                          <span style={{ fontFamily: 'monospace', background: '#e2e8f0', padding: '0.2rem 0.5rem', borderRadius: '4px', color: 'var(--text-main)' }}>
+                            ••••••••••••
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <button 
+                  className="btn btn-primary"
+                  onClick={() => {
+                    onUseMedia(selectedPost.mediaUrl);
+                    setSelectedPost(null);
+                  }}
+                  style={{ alignSelf: 'flex-start' }}
+                >
+                  <RefreshCw size={18} />
+                  <span>Gunakan Lagi</span>
+                </button>
               </div>
-              <button 
-                className="btn btn-primary"
-                onClick={() => {
-                  onUseMedia(selectedPost.mediaUrl);
-                  setSelectedPost(null);
-                }}
-              >
-                <RefreshCw size={18} />
-                <span>Gunakan Lagi</span>
-              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* EDIT MODAL */}
-      {editingPost && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
-          <div className="card" style={{ width: '100%', maxWidth: '500px', padding: '2rem', background: '#fff', position: 'relative' }}>
-            <button 
-              onClick={() => setEditingPost(null)}
-              style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
-            >
-              <X size={20} />
-            </button>
-            <h3 style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: '1.5rem', color: 'var(--text-main)' }}>Edit Jadwal Posting</h3>
-            
-            <div className="input-group" style={{ marginBottom: '1rem' }}>
-              <label className="stat-label">Konten Postingan</label>
-              <textarea 
-                rows={5} 
-                style={{ marginTop: '0.5rem', background: '#f8fafc' }}
-                value={editContent}
-                onChange={(e) => setEditContent(e.target.value)}
-              ></textarea>
-            </div>
-
-            <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
-              <div className="input-group" style={{ flex: 1 }}>
-                <label className="stat-label">Tanggal</label>
-                <input type="date" style={{ marginTop: '0.5rem', background: '#f8fafc' }} value={editDate} onChange={e => setEditDate(e.target.value)} />
-              </div>
-              <div className="input-group" style={{ flex: 1 }}>
-                <label className="stat-label">Waktu</label>
-                <input type="time" style={{ marginTop: '0.5rem', background: '#f8fafc' }} value={editTime} onChange={e => setEditTime(e.target.value)} />
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
-              <button className="btn" style={{ background: '#f1f5f9', color: 'var(--text-muted)' }} onClick={() => setEditingPost(null)}>Batal</button>
-              <button className="btn btn-primary" onClick={handleSaveEdit} disabled={isSaving}>
-                <Save size={18} />
-                <span>{isSaving ? 'Menyimpan...' : 'Simpan Perubahan'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 };

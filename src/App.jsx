@@ -15,6 +15,7 @@ import Scheduler from './pages/Scheduler';
 import AuthPage from './pages/AuthPage';
 import MediaLibrary from './pages/MediaLibrary';
 import Accounts from './pages/Accounts';
+import StreamingServers from './pages/StreamingServers';
 import AdminDashboard from './pages/AdminDashboard';
 import { PendingPage, RejectedPage, ExpiredPage } from './pages/StatusPages';
 import PrivacyPolicy from './pages/PrivacyPolicy';
@@ -47,8 +48,11 @@ function App() {
   }, [activePage]);
   const [posts, setPosts] = useState([]);
   const [fetchingPosts, setFetchingPosts] = useState(false);
+  const [mediaList, setMediaList] = useState([]);
+  const [fetchingMedia, setFetchingMedia] = useState(false);
   const [accounts, setAccounts] = useState([]);
   const [prefilledMedia, setPrefilledMedia] = useState(null);
+  const [editingPost, setEditingPost] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [dbUser, setDbUser] = useState(null);
 
@@ -96,6 +100,95 @@ function App() {
     });
     return unsubscribe;
   }, [user]);
+
+  // Firestore Sync for Media Library
+  useEffect(() => {
+    if (!user) return;
+    setFetchingMedia(true);
+    const q = query(collection(db, 'media'), where('userId', '==', user.id));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const mediaData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setMediaList(mediaData.sort((a, b) => b.uploadedAt?.seconds - a.uploadedAt?.seconds));
+      setFetchingMedia(false);
+    });
+    return unsubscribe;
+  }, [user]);
+
+  const handleUploadMedia = async (file, category, onProgress) => {
+    if (!user) return;
+    try {
+      if (onProgress) onProgress({ percent: 0, stage: 'Meminta sesi unggah Google Drive...' });
+
+      // 1. Buat sesi pengunggahan
+      const sessionResponse = await fetch(GOOGLE_DRIVE_SCRIPT_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'createUploadSession',
+          filename: file.name,
+          mimetype: file.type,
+          origin: window.location.origin
+        })
+      });
+      const sessionResult = await sessionResponse.json();
+
+      if (sessionResult.status !== 'success' || !sessionResult.uploadUrl) {
+        throw new Error("Gagal membuat sesi unggah: " + (sessionResult.message || "Tanggapan kosong"));
+      }
+
+      if (onProgress) onProgress({ percent: 0, stage: 'Mengunggah file ke Google Drive...' });
+
+      // 2. Unggah file
+      const uploadResult = await uploadFileDirect(sessionResult.uploadUrl, file, (percent) => {
+        if (onProgress) onProgress({ percent, stage: `Mengunggah (${percent}%)...` });
+      });
+
+      if (!uploadResult.id) {
+        throw new Error("Gagal mendapatkan ID file setelah mengunggah.");
+      }
+
+      if (onProgress) onProgress({ percent: 100, stage: 'Memfinalisasi file...' });
+
+      // 3. Finalisasi
+      const finalizeResponse = await fetch(GOOGLE_DRIVE_SCRIPT_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'finalizeFile',
+          fileId: uploadResult.id
+        })
+      });
+      const finalizeResult = await finalizeResponse.json();
+
+      if (finalizeResult.status !== 'success' || !finalizeResult.url) {
+        throw new Error("Gagal memfinalisasi file: " + (finalizeResult.message || "Tanggapan kosong"));
+      }
+
+      // 4. Tambah ke Firestore 'media'
+      const mediaDoc = {
+        userId: user.id,
+        fileName: file.name,
+        fileSize: file.size,
+        mediaUrl: finalizeResult.url,
+        mediaType: file.type,
+        category: category,
+        uploadedAt: new Date() // Menggunakan Date object untuk sorting instan
+      };
+      
+      const docRef = await addDoc(collection(db, 'media'), mediaDoc);
+
+      // 5. Update user storageUsed
+      const addedSizeInMb = file.size / (1024 * 1024);
+      const currentUsed = dbUser?.storageUsed || 0;
+      await updateDoc(doc(db, 'users', user.id), {
+        storageUsed: Number((currentUsed + addedSizeInMb).toFixed(2))
+      });
+
+      return { id: docRef.id, ...mediaDoc };
+    } catch (error) {
+      console.error("Gagal mengunggah media:", error);
+      alert("Gagal mengunggah media: " + error.message);
+      throw error;
+    }
+  };
 
   // Simpan URL Google Apps Script terbaru ke Firestore untuk dibaca backend secara dinamis
   useEffect(() => {
@@ -192,131 +285,9 @@ function App() {
   const handleSchedulePost = async (postData, onProgress) => {
     if (!user) return;
     try {
-      let finalMediaUrl = postData.mediaUrl;
-
-      // Upload ke Google Drive jika ada file baru dipilih
-      if (postData.file) {
-        const file = postData.file;
-
-        if (onProgress) onProgress({ percent: 0, stage: 'Meminta sesi unggah Google Drive...' });
-
-        // 1. Buat sesi pengunggahan dengan mendaftarkan origin browser
-        const sessionResponse = await fetch(GOOGLE_DRIVE_SCRIPT_URL, {
-          method: 'POST',
-          body: JSON.stringify({
-            action: 'createUploadSession',
-            filename: file.name,
-            mimetype: file.type,
-            origin: window.location.origin
-          })
-        });
-        const sessionResult = await sessionResponse.json();
-
-        if (sessionResult.status !== 'success' || !sessionResult.uploadUrl) {
-          throw new Error("Gagal membuat sesi unggah Google Drive: " + (sessionResult.message || "Tanggapan kosong"));
-        }
-
-        if (onProgress) onProgress({ percent: 0, stage: 'Mengunggah media utama...' });
-
-        // 2. Unggah file secara langsung (utuh) ke server Google Drive via XHR (cepat & bypass CORS)
-        const uploadResult = await uploadFileDirect(sessionResult.uploadUrl, file, (percent) => {
-          if (onProgress) onProgress({ percent, stage: 'Mengunggah media utama...' });
-        });
-
-        if (!uploadResult.id) {
-          throw new Error("Gagal mendapatkan ID file setelah mengunggah.");
-        }
-
-        if (onProgress) onProgress({ percent: 100, stage: 'Memfinalisasi file...' });
-
-        // 3. Ubah hak akses file menjadi publik dan dapatkan download link
-        const finalizeResponse = await fetch(GOOGLE_DRIVE_SCRIPT_URL, {
-          method: 'POST',
-          body: JSON.stringify({
-            action: 'finalizeFile',
-            fileId: uploadResult.id
-          })
-        });
-        const finalizeResult = await finalizeResponse.json();
-
-        if (finalizeResult.status !== 'success' || !finalizeResult.url) {
-          throw new Error("Gagal memfinalisasi file Google Drive: " + (finalizeResult.message || "Tanggapan kosong"));
-        }
-
-        finalMediaUrl = finalizeResult.url;
-      }
-
-      let finalYtThumbnailUrl = postData.ytThumbnail || null;
-
-      // Upload Custom Thumbnail ke Google Drive jika disediakan
-      if (postData.ytThumbnailFile) {
-        const thumbnailFile = postData.ytThumbnailFile;
-
-        if (onProgress) onProgress({ percent: 0, stage: 'Meminta sesi unggah thumbnail...' });
-
-        const sessionResponse = await fetch(GOOGLE_DRIVE_SCRIPT_URL, {
-          method: 'POST',
-          body: JSON.stringify({
-            action: 'createUploadSession',
-            filename: thumbnailFile.name,
-            mimetype: thumbnailFile.type,
-            origin: window.location.origin
-          })
-        });
-        const sessionResult = await sessionResponse.json();
-
-        if (sessionResult.status !== 'success' || !sessionResult.uploadUrl) {
-          throw new Error("Gagal membuat sesi unggah thumbnail: " + (sessionResult.message || "Tanggapan kosong"));
-        }
-
-        if (onProgress) onProgress({ percent: 0, stage: 'Mengunggah thumbnail kustom...' });
-
-        const uploadResult = await uploadFileDirect(sessionResult.uploadUrl, thumbnailFile, (percent) => {
-          if (onProgress) onProgress({ percent, stage: 'Mengunggah thumbnail kustom...' });
-        });
-
-        if (!uploadResult.id) {
-          throw new Error("Gagal mendapatkan ID thumbnail setelah mengunggah.");
-        }
-
-        if (onProgress) onProgress({ percent: 100, stage: 'Memfinalisasi thumbnail...' });
-
-        const finalizeResponse = await fetch(GOOGLE_DRIVE_SCRIPT_URL, {
-          method: 'POST',
-          body: JSON.stringify({
-            action: 'finalizeFile',
-            fileId: uploadResult.id
-          })
-        });
-        const finalizeResult = await finalizeResponse.json();
-
-        if (finalizeResult.status !== 'success' || !finalizeResult.url) {
-          throw new Error("Gagal memfinalisasi thumbnail Google Drive: " + (finalizeResult.message || "Tanggapan kosong"));
-        }
-
-        finalYtThumbnailUrl = finalizeResult.url;
-      }
-
       if (onProgress) onProgress({ percent: 100, stage: 'Menyimpan jadwal ke database...' });
 
-      // Calculate size of uploaded files to update storageUsed
-      let uploadedBytes = 0;
-      if (postData.file) {
-        uploadedBytes += postData.file.size;
-      }
-      if (postData.ytThumbnailFile) {
-        uploadedBytes += postData.ytThumbnailFile.size;
-      }
-      if (uploadedBytes > 0) {
-        const addedSizeInMb = uploadedBytes / (1024 * 1024);
-        const currentUsed = dbUser?.storageUsed || 0;
-        const newUsed = currentUsed + addedSizeInMb;
-        await updateDoc(doc(db, 'users', user.id), {
-          storageUsed: Number(newUsed.toFixed(2))
-        });
-      }
-
-      const { file, ytThumbnailFile, accounts: targetAccounts, ...sharedData } = postData;
+      const { accounts: targetAccounts, ...sharedData } = postData;
 
       // Buat dokumen post terpisah untuk setiap akun yang dipilih
       for (const acc of targetAccounts) {
@@ -325,7 +296,6 @@ function App() {
           platform: acc.platform,
           accountId: acc.id,
           accountName: acc.username || acc.name,
-          mediaUrl: finalMediaUrl,
           userId: user.id,
           createdAt: serverTimestamp(),
           status: 'Scheduled'
@@ -333,15 +303,32 @@ function App() {
 
         // Tambahkan properti spesifik platform
         if (acc.platform === 'youtube') {
-          postDoc.ytTitle = postData.ytTitle;
+          postDoc.ytTitle = postData.ytTitle || '';
           postDoc.ytTags = postData.ytTags || '';
           postDoc.ytPrivacy = postData.ytPrivacy || 'public';
           postDoc.ytCategoryId = postData.ytCategoryId || '22';
-          if (finalYtThumbnailUrl) {
-            postDoc.ytThumbnail = finalYtThumbnailUrl;
-          }
+          postDoc.ytThumbnail = postData.ytThumbnail || null;
         } else if (acc.platform === 'facebook') {
           postDoc.linkUrl = postData.linkUrl || '';
+        }
+
+        // Penanganan field Live Streaming khusus
+        postDoc.postType = postData.postType || 'post';
+        if (postData.postType === 'live') {
+          postDoc.streamKeyMode = postData.streamKeyMode || 'auto';
+          postDoc.streamKey = postData.streamKey || '';
+          postDoc.liveDuration = postData.liveDuration || '24/7';
+          postDoc.bitrate = postData.bitrate || 'copy';
+          postDoc.backsoundUrls = postData.backsoundUrls || [];
+          postDoc.imageStampUrl = postData.imageStampUrl || null;
+          
+          // Recurring schedule fields
+          postDoc.isRecurring = postData.isRecurring || false;
+          postDoc.daysOfWeek = postData.daysOfWeek || [];
+          postDoc.scheduledTime = postData.scheduledTime || '';
+          postDoc.randomVideo = postData.randomVideo || false;
+          postDoc.randomMusic = postData.randomMusic || false;
+          postDoc.randomMusicCount = postData.randomMusicCount || 1;
         }
 
         await addDoc(collection(db, 'posts'), postDoc);
@@ -392,30 +379,42 @@ function App() {
     }
   };
 
-  const handleDeleteMedia = async (post) => {
-    if (!window.confirm("Apakah Anda yakin ingin menghapus media ini dari database dan Google Drive?")) return;
+  const handleDeleteMedia = async (mediaItem) => {
+    // Check if this media is being used in any active scheduled post
+    const isUsed = posts.some(p => 
+      p.status === 'Scheduled' && (
+        p.mediaUrl === mediaItem.mediaUrl || 
+        (p.backsoundUrls && p.backsoundUrls.includes(mediaItem.mediaUrl)) || 
+        p.imageStampUrl === mediaItem.mediaUrl
+      )
+    );
+    if (isUsed) {
+      if (!window.confirm("Peringatan: Media ini sedang digunakan dalam jadwal postingan aktif. Apakah Anda yakin ingin tetap menghapusnya?")) {
+        return;
+      }
+    } else {
+      if (!window.confirm("Apakah Anda yakin ingin menghapus media ini dari database dan Google Drive?")) return;
+    }
 
     try {
       // 1. Hapus dari Google Drive jika itu link Drive
-      if (post.mediaUrl && post.mediaUrl.includes('id=')) {
-        // Ambil ID secara akurat
-        const urlObj = new URL(post.mediaUrl);
+      if (mediaItem.mediaUrl && mediaItem.mediaUrl.includes('id=')) {
+        const urlObj = new URL(mediaItem.mediaUrl);
         const fileId = urlObj.searchParams.get('id');
 
         if (fileId) {
           console.log("Sending delete request for ID:", fileId);
-          // Gunakan fetch sederhana agar tidak memicu download otomatis
           const deleteUrl = `${GOOGLE_DRIVE_SCRIPT_URL}?action=delete&fileId=${fileId}`;
           fetch(deleteUrl, { mode: 'no-cors' }).catch(e => console.log("Del req sent"));
         }
       }
 
       // 2. Hapus dari Firestore
-      await deleteDoc(doc(db, 'posts', post.id));
+      await deleteDoc(doc(db, 'media', mediaItem.id));
 
       // 3. Decrement storageUsed
-      if (post.fileSize) {
-        const deletedSizeInMb = post.fileSize / (1024 * 1024);
+      if (mediaItem.fileSize) {
+        const deletedSizeInMb = mediaItem.fileSize / (1024 * 1024);
         const currentUsed = dbUser?.storageUsed || 0;
         const newUsed = Math.max(0, currentUsed - deletedSizeInMb);
         await updateDoc(doc(db, 'users', user.id), {
@@ -518,10 +517,34 @@ function App() {
                 onClearInitial={() => setPrefilledMedia(null)}
                 accounts={accounts}
                 posts={posts}
+                mediaList={mediaList}
+                onUploadMedia={handleUploadMedia}
                 user={dbUser}
+                editPost={editingPost}
+                onCancelEdit={() => {
+                  setEditingPost(null);
+                  setActivePage('queue');
+                }}
+                onUpdatePost={async (postId, updatedData) => {
+                  await handleUpdatePost(postId, updatedData);
+                  setEditingPost(null);
+                  setActivePage('queue');
+                }}
               />
             )}
-            {activePage === 'queue' && <ScheduleList posts={posts} onDelete={handleDeletePost} onUpdate={handleUpdatePost} onUseMedia={handleUseMedia} user={dbUser} />}
+            {activePage === 'queue' && (
+              <ScheduleList 
+                posts={posts} 
+                onDelete={handleDeletePost} 
+                onUpdate={handleUpdatePost} 
+                onUseMedia={handleUseMedia} 
+                user={dbUser} 
+                onEdit={(post) => {
+                  setEditingPost(post);
+                  setActivePage('scheduler');
+                }}
+              />
+            )}
             {activePage === 'accounts' && (
               <Accounts
                 accounts={accounts}
@@ -531,7 +554,8 @@ function App() {
                 user={dbUser}
               />
             )}
-            {activePage === 'media' && <MediaLibrary posts={posts} onUseMedia={handleUseMedia} onDelete={handleDeleteMedia} user={dbUser} />}
+            {activePage === 'media' && <MediaLibrary mediaList={mediaList} posts={posts} onUseMedia={handleUseMedia} onDelete={handleDeleteMedia} onUploadMedia={handleUploadMedia} user={dbUser} />}
+            {activePage === 'servers' && <StreamingServers user={dbUser} />}
             {activePage === 'admin' && dbUser?.role === 'admin' && (
               <AdminDashboard scriptUrl={GOOGLE_DRIVE_SCRIPT_URL} />
             )}
