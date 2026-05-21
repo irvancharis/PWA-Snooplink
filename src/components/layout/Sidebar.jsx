@@ -20,10 +20,12 @@ const Sidebar = ({ activePage, onNavigate, onLogout, isOpen, onClose, user }) =>
     { id: 'queue', icon: List, label: 'List Schedule' },
     { id: 'media', icon: ImageIcon, label: 'Media Library' },
     { id: 'accounts', icon: Users, label: 'Accounts' },
-    { id: 'servers', icon: Server, label: 'Streaming Server' },
   ];
 
-  if (user?.role === 'admin') {
+  const isSuperAdmin = user?.role === 'admin' || user?.email === 'irvancharis@gmail.com';
+
+  if (isSuperAdmin) {
+    menuItems.push({ id: 'servers', icon: Server, label: 'Streaming Server' });
     menuItems.push({ id: 'admin', icon: ShieldCheck, label: 'Superadmin' });
   }
 

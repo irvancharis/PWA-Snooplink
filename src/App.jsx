@@ -555,7 +555,7 @@ function App() {
               />
             )}
             {activePage === 'media' && <MediaLibrary mediaList={mediaList} posts={posts} onUseMedia={handleUseMedia} onDelete={handleDeleteMedia} onUploadMedia={handleUploadMedia} user={dbUser} />}
-            {activePage === 'servers' && <StreamingServers user={dbUser} />}
+            {activePage === 'servers' && (dbUser?.role === 'admin' || dbUser?.email === 'irvancharis@gmail.com') && <StreamingServers user={dbUser} />}
             {activePage === 'admin' && dbUser?.role === 'admin' && (
               <AdminDashboard scriptUrl={GOOGLE_DRIVE_SCRIPT_URL} />
             )}
