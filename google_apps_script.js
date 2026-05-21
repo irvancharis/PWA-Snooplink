@@ -342,10 +342,18 @@ function executePost(post, postId) {
   // Spintax for YouTube Title
   var titleTemplate = post.fields.ytTitleTemplate?.stringValue || post.fields.ytTitle?.stringValue || "";
   if (titleTemplate) {
-    // Ganti placeholder {part} dengan loopIteration (case-insensitive)
-    titleTemplate = titleTemplate.replace(/\{part\}/gi, loopIteration.toString());
+    // Jika ada beberapa judul (satu per baris), pilih salah satu secara acak
+    var titleLines = titleTemplate.split(/\r?\n/).map(function(l) { return l.trim(); }).filter(function(l) { return l.length > 0; });
+    var selectedTitle = titleTemplate;
+    if (titleLines.length > 1) {
+      selectedTitle = titleLines[Math.floor(Math.random() * titleLines.length)];
+      console.log("Memilih judul acak dari daftar: " + selectedTitle);
+    }
     
-    var spunTitle = parseSpintax(titleTemplate);
+    // Ganti placeholder {part} dengan loopIteration (case-insensitive)
+    selectedTitle = selectedTitle.replace(/\{part\}/gi, loopIteration.toString());
+    
+    var spunTitle = parseSpintax(selectedTitle);
     
     // Auto fallback: jika loop > 1 dan judul tidak mengandung nomor iterasi, tambahkan suffix otomatis
     if (loopIteration > 1 && spunTitle.indexOf("#" + loopIteration) === -1 && spunTitle.indexOf("Part " + loopIteration) === -1) {
@@ -365,9 +373,18 @@ function executePost(post, postId) {
   var contentTemplate = post.fields.contentTemplate?.stringValue || post.fields.content?.stringValue || "";
   if (contentTemplate) {
     // Ganti placeholder {part} dengan loopIteration (case-insensitive)
-    contentTemplate = contentTemplate.replace(/\{part\}/gi, loopIteration.toString());
+    var replacedContent = contentTemplate.replace(/\{part\}/gi, loopIteration.toString());
     
-    var spunContent = parseSpintax(contentTemplate);
+    // Pengacak paragraf: pisahkan berdasarkan double newline (atau baris kosong)
+    var paragraphs = replacedContent.split(/\n\s*\n/).map(function(p) { return p.trim(); }).filter(function(p) { return p.length > 0; });
+    var shuffledContent = replacedContent;
+    if (paragraphs.length > 1) {
+      paragraphs = shuffleArray(paragraphs);
+      shuffledContent = paragraphs.join("\n\n");
+      console.log("Berhasil mengacak urutan " + paragraphs.length + " paragraf deskripsi.");
+    }
+    
+    var spunContent = parseSpintax(shuffledContent);
     
     // Auto fallback: tambahkan footnote unik di bagian bawah deskripsi
     if (loopIteration > 1) {
@@ -387,9 +404,18 @@ function executePost(post, postId) {
   var tagsTemplate = post.fields.ytTagsTemplate?.stringValue || post.fields.ytTags?.stringValue || "";
   if (tagsTemplate) {
     // Ganti placeholder {part} dengan loopIteration (case-insensitive)
-    tagsTemplate = tagsTemplate.replace(/\{part\}/gi, loopIteration.toString());
+    var replacedTags = tagsTemplate.replace(/\{part\}/gi, loopIteration.toString());
     
-    var spunTags = parseSpintax(tagsTemplate);
+    var spunTags = parseSpintax(replacedTags);
+    
+    // Pengacak posisi tag: pisahkan berdasarkan koma, acak, gabungkan kembali
+    var tagsList = spunTags.split(",").map(function(t) { return t.trim(); }).filter(function(t) { return t.length > 0; });
+    if (tagsList.length > 1) {
+      tagsList = shuffleArray(tagsList);
+      spunTags = tagsList.join(", ");
+      console.log("Berhasil mengacak posisi " + tagsList.length + " tags.");
+    }
+    
     updates.ytTags = { stringValue: spunTags };
     updates.ytTagsTemplate = { stringValue: tagsTemplate };
     fieldPaths.push("ytTags", "ytTagsTemplate");
@@ -1768,6 +1794,19 @@ function parseSpintax(text) {
     text = text.substring(0, match.index) + randomPart.trim() + text.substring(match.index + match[0].length);
   }
   return text;
+}
+
+// Fisher-Yates Shuffle Algorithm
+function shuffleArray(array) {
+  var currentIndex = array.length, temporaryValue, randomIndex;
+  while (0 !== currentIndex) {
+    randomIndex = Math.floor(Math.random() * currentIndex);
+    currentIndex -= 1;
+    temporaryValue = array[currentIndex];
+    array[currentIndex] = array[randomIndex];
+    array[randomIndex] = temporaryValue;
+  }
+  return array;
 }
 
 

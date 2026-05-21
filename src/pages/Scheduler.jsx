@@ -1175,14 +1175,14 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
                 <>
                   <div className="input-group">
                     <label className="stat-label">Judul Live Streaming <span style={{color: 'red'}}>*</span></label>
-                    <input 
-                      type="text" 
-                      placeholder="Masukkan judul untuk siaran langsung..." 
-                      style={{ marginTop: '0.5rem', background: '#fff', width: '100%', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0.75rem 1rem' }}
+                    <textarea 
+                      rows={3} 
+                      placeholder="Masukkan judul untuk siaran langsung... (Bisa lebih dari 1 judul. Masukkan 1 judul per baris jika ingin diacak pada setiap live)" 
+                      style={{ marginTop: '0.5rem', background: '#fff', width: '100%', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0.75rem 1rem', fontFamily: 'inherit', resize: 'vertical' }}
                       value={ytTitle}
                       onChange={(e) => setYtTitle(e.target.value)}
                       required
-                    />
+                    ></textarea>
                   </div>
 
                   <div className="input-group">
