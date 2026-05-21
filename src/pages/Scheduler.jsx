@@ -36,6 +36,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
   const [ytCategoryId, setYtCategoryId] = useState('22');
   const [ytThumbnailUrl, setYtThumbnailUrl] = useState('');
   const [randomThumbnail, setRandomThumbnail] = useState(false);
+  const [ytAlteredContent, setYtAlteredContent] = useState('yes');
 
   // Live stream specific state
   const [postType, setPostType] = useState('post'); // 'post' or 'live'
@@ -124,6 +125,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
       setYtPrivacy(editPost.ytPrivacy || 'public');
       setYtCategoryId(editPost.ytCategoryId || '22');
       setYtThumbnailUrl(editPost.ytThumbnail || '');
+      setYtAlteredContent(editPost.ytAlteredContent || 'yes');
       
       setPostType(editPost.postType || 'post');
       setStreamKeyMode(editPost.streamKeyMode || 'auto');
@@ -158,6 +160,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
       setYtPrivacy('public');
       setYtCategoryId('22');
       setYtThumbnailUrl('');
+      setYtAlteredContent('yes');
       setPostType('post');
       setStreamKeyMode('auto');
       setStreamKey('');
@@ -454,7 +457,8 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
           ytTags,
           ytPrivacy,
           ytCategoryId,
-          ytThumbnail: ytThumbnailUrl
+          ytThumbnail: ytThumbnailUrl,
+          ytAlteredContent
         })
       };
     } else {
@@ -492,7 +496,8 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
           ytTags,
           ytPrivacy,
           ytCategoryId,
-          ytThumbnail: ytThumbnailUrl
+          ytThumbnail: ytThumbnailUrl,
+          ytAlteredContent
         })
       };
     }
@@ -1399,7 +1404,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
               )}
 
               {hasYoutubeSelected && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <div className="input-group">
                     <label className="stat-label">Tags (Pisahkan dengan koma)</label>
                     <input 
@@ -1410,20 +1415,33 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
                       onChange={(e) => setYtTags(e.target.value)}
                     />
                   </div>
-                  <div className="input-group">
-                    <label className="stat-label">Kategori YouTube</label>
-                    <select 
-                      style={{ marginTop: '0.5rem', background: '#fff', width: '100%', border: '1px solid #e2e8f0', borderRadius: '12px', height: '44px', padding: '0 1rem' }}
-                      value={ytCategoryId}
-                      onChange={(e) => setYtCategoryId(e.target.value)}
-                    >
-                      <option value="22">Orang & Blog</option>
-                      <option value="10">Musik</option>
-                      <option value="20">Game</option>
-                      <option value="24">Hiburan</option>
-                      <option value="27">Pendidikan</option>
-                      <option value="28">Sains & Teknologi</option>
-                    </select>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div className="input-group">
+                      <label className="stat-label">Kategori YouTube</label>
+                      <select 
+                        style={{ marginTop: '0.5rem', background: '#fff', width: '100%', border: '1px solid #e2e8f0', borderRadius: '12px', height: '44px', padding: '0 1rem' }}
+                        value={ytCategoryId}
+                        onChange={(e) => setYtCategoryId(e.target.value)}
+                      >
+                        <option value="22">Orang & Blog</option>
+                        <option value="10">Musik</option>
+                        <option value="20">Game</option>
+                        <option value="24">Hiburan</option>
+                        <option value="27">Pendidikan</option>
+                        <option value="28">Sains & Teknologi</option>
+                      </select>
+                    </div>
+                    <div className="input-group">
+                      <label className="stat-label">Media Buatan / Altered Content (AI Label)</label>
+                      <select 
+                        style={{ marginTop: '0.5rem', background: '#fff', width: '100%', border: '1px solid #e2e8f0', borderRadius: '12px', height: '44px', padding: '0 1rem' }}
+                        value={ytAlteredContent}
+                        onChange={(e) => setYtAlteredContent(e.target.value)}
+                      >
+                        <option value="yes">Ya (Mengandung konten sintetis/AI)</option>
+                        <option value="no">Tidak</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
               )}

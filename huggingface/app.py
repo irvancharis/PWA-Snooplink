@@ -343,7 +343,7 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
             
             stamp_cmd = [
                 "ffmpeg", "-y", "-i", temp_video_path, "-loop", "1", "-i", temp_stamp_path,
-                "-filter_complex", "[1:v][0:v]scale2ref=w=iw*0.05:h=-1[stamp][video];[video][stamp]overlay=main_w-overlay_w-10:main_h-overlay_h-10:shortest=1[outv]",
+                "-filter_complex", "[1:v][0:v]scale2ref=w=rw*0.12:h=-1[stamp][video];[video][stamp]overlay=main_w-overlay_w-10:main_h-overlay_h-10:shortest=1[outv]",
                 "-map", "[outv]", "-map", "0:a?",
                 "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
                 "-c:a", "copy",

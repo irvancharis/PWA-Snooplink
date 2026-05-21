@@ -455,8 +455,10 @@ function executePost(post, postId) {
         freshToken = getFreshYouTubeToken(token);
         if (streamKeyMode === "auto") {
           console.log("YouTube Stream Key Mode = AUTO. Membuat Live Broadcast...");
-          // Kirim parameter tambahan (originalContent dan tierLocation) untuk penanganan terjemahan
-          var ytLiveInfo = createYouTubeLive(originalYtTitle, ytPrivacy, freshToken, originalContent, tierLocation);
+          // Kirim parameter tambahan untuk penanganan terjemahan dan tags
+          const ytTagsStr = post.fields.ytTags?.stringValue || "";
+          const ytAlteredContent = post.fields.ytAlteredContent?.stringValue || "yes";
+          var ytLiveInfo = createYouTubeLive(originalYtTitle, ytPrivacy, freshToken, originalContent, tierLocation, ytTagsStr, postId, ytAlteredContent);
           streamKey = ytLiveInfo.streamKey;
 
            // Simpan streamKey dan ytBroadcastId buatan API ke dokumen Firestore agar dibaca oleh Hugging Face
@@ -657,8 +659,8 @@ function executePost(post, postId) {
 // =========================================================================
 
 // Membuat YouTube Live Broadcast & Stream secara otomatis via API
-// Membuat YouTube Live Broadcast & Stream secara otomatis via API dengan metadata localizations
-function createYouTubeLive(ytTitle, privacyStatus, token, description, tierLocation) {
+// Membuat YouTube Live Broadcast & Stream secara otomatis via API dengan metadata localizations, tags, dan status
+function createYouTubeLive(ytTitle, privacyStatus, token, description, tierLocation, ytTagsStr, postId, ytAlteredContent) {
   // A. Buat Live Broadcast (Tanpa block localizations agar tidak memicu error API)
   var broadcastUrl = "https://www.googleapis.com/youtube/v3/liveBroadcasts?part=snippet,status,contentDetails";
 
@@ -719,38 +721,71 @@ function createYouTubeLive(ytTitle, privacyStatus, token, description, tierLocat
   }
   var broadcastId = broadcastData.id;
 
-  // B. Simpan localization jika ada (melalui Videos API karena broadcastId = videoId)
-  if (localizations && broadcastId) {
+  // B. Simpan localization, tags, & status altered content (melalui Videos API karena broadcastId = videoId)
+  if (broadcastId) {
     try {
-      console.log("Mengambil metadata video untuk localization...");
-      var videoGetUrl = "https://www.googleapis.com/youtube/v3/videos?part=snippet&id=" + broadcastId;
-      var videoGetRes = UrlFetchApp.fetch(videoGetUrl, {
-        method: "GET",
-        headers: { Authorization: "Bearer " + token },
-        muteHttpExceptions: true
-      });
-      var videoGetData = JSON.parse(videoGetRes.getContentText());
-      if (videoGetData.items && videoGetData.items.length > 0) {
+      console.log("Mengambil metadata video untuk update tags, localization & status...");
+      var videoGetUrl = "https://www.googleapis.com/youtube/v3/videos?part=snippet,status&id=" + broadcastId;
+      var videoGetData = null;
+      
+      // Lakukan retry loop (up to 5 attempts dengan Utilities.sleep(1500)) untuk menangani replication lag
+      for (var attempt = 1; attempt <= 5; attempt++) {
+        console.log("Mengambil metadata video (percobaan ke-" + attempt + ")...");
+        var videoGetRes = UrlFetchApp.fetch(videoGetUrl, {
+          method: "GET",
+          headers: { Authorization: "Bearer " + token },
+          muteHttpExceptions: true
+        });
+        videoGetData = JSON.parse(videoGetRes.getContentText());
+        if (videoGetData && videoGetData.items && videoGetData.items.length > 0) {
+          break;
+        }
+        console.log("Video belum tersedia di videos.list. Menunggu 1500ms...");
+        Utilities.sleep(1500);
+      }
+      
+      if (videoGetData && videoGetData.items && videoGetData.items.length > 0) {
         var videoItem = videoGetData.items[0];
         var originalSnippet = videoItem.snippet;
+        var originalStatus = videoItem.status || {};
         
         // Buat objek snippet bersih (hanya properti yang dapat ditulis)
         var cleanSnippet = {
           title: originalSnippet.title || ytTitle,
           description: originalSnippet.description || description || "",
-          categoryId: originalSnippet.categoryId || "22", // Fallback ke category 22 (People & Blogs)
-          defaultLanguage: "id"
+          categoryId: originalSnippet.categoryId || "22"
         };
-        if (originalSnippet.tags) cleanSnippet.tags = originalSnippet.tags;
+        if (originalSnippet.defaultLanguage) cleanSnippet.defaultLanguage = originalSnippet.defaultLanguage;
         if (originalSnippet.defaultAudioLanguage) cleanSnippet.defaultAudioLanguage = originalSnippet.defaultAudioLanguage;
+        
+        // Atur tags
+        if (ytTagsStr) {
+          cleanSnippet.tags = ytTagsStr.split(",").map(function (t) { return t.trim(); }).filter(function (t) { return t.length > 0; });
+        } else if (originalSnippet.tags) {
+          cleanSnippet.tags = originalSnippet.tags;
+        }
+
+        // Buat objek status bersih dengan validasi privacyStatus & containsSyntheticMedia
+        var cleanStatus = {
+          privacyStatus: originalStatus.privacyStatus || privacyStatus || "public",
+          selfDeclaredMadeForKids: originalStatus.selfDeclaredMadeForKids !== undefined ? originalStatus.selfDeclaredMadeForKids : false,
+          containsSyntheticMedia: (ytAlteredContent !== "no")
+        };
+        if (originalStatus.license) cleanStatus.license = originalStatus.license;
+        if (originalStatus.embeddable !== undefined) cleanStatus.embeddable = originalStatus.embeddable;
+        if (originalStatus.publicStatsViewable !== undefined) cleanStatus.publicStatsViewable = originalStatus.publicStatsViewable;
 
         var videoUpdatePayload = {
           id: broadcastId,
           snippet: cleanSnippet,
-          localizations: localizations
+          status: cleanStatus
         };
+        
+        if (localizations) {
+          videoUpdatePayload.localizations = localizations;
+        }
 
-        var videoUpdateUrl = "https://www.googleapis.com/youtube/v3/videos?part=snippet,localizations";
+        var videoUpdateUrl = "https://www.googleapis.com/youtube/v3/videos?part=snippet,status" + (localizations ? ",localizations" : "");
         var videoUpdateRes = UrlFetchApp.fetch(videoUpdateUrl, {
           method: "PUT",
           contentType: "application/json",
@@ -758,10 +793,33 @@ function createYouTubeLive(ytTitle, privacyStatus, token, description, tierLocat
           payload: JSON.stringify(videoUpdatePayload),
           muteHttpExceptions: true
         });
-        console.log("YouTube Video Localization Update Respon: " + videoUpdateRes.getContentText());
+        
+        var videoUpdateData = JSON.parse(videoUpdateRes.getContentText());
+        if (videoUpdateData.error) {
+          throw new Error("Gagal update video YouTube: " + videoUpdateData.error.message);
+        }
+        console.log("YouTube Video Update (Tags/Localization/Status) Sukses: " + videoUpdateRes.getContentText());
+        
+        // Bersihkan warning metadata jika berhasil
+        if (postId) {
+          try {
+            updateFirestoreMetadataWarning(postId, "");
+          } catch (dbErr) {
+            console.error("Gagal membersihkan log warning di Firestore: " + dbErr.message);
+          }
+        }
+      } else {
+        throw new Error("Video tidak ditemukan di YouTube setelah 5 kali percobaan.");
       }
     } catch (localErr) {
-      console.error("Gagal mengupdate localization pada video YouTube: " + localErr.message);
+      console.error("Gagal mengupdate metadata video YouTube: " + localErr.message);
+      if (postId) {
+        try {
+          updateFirestoreMetadataWarning(postId, "Peringatan Metadata YouTube: " + localErr.message);
+        } catch (dbErr) {
+          console.error("Gagal mencatat log warning ke Firestore: " + dbErr.message);
+        }
+      }
     }
   }
 
@@ -830,6 +888,25 @@ function updateFirestoreStreamKeyAndBroadcastId(docId, streamKey, broadcastId) {
     payload.fields.ytBroadcastId = { stringValue: broadcastId };
   }
 
+  UrlFetchApp.fetch(url, {
+    method: "patch", contentType: "application/json",
+    headers: { "Authorization": "Bearer " + token },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+}
+
+// Simpan warning terkait update metadata YouTube (Tags/Altered Content) ke dokumen Firestore
+function updateFirestoreMetadataWarning(docId, warningMessage) {
+  const token = getAccessToken();
+  const url = `https://firestore.googleapis.com/v1/projects/${FB_CONFIG.project_id}/databases/(default)/documents/posts/${docId}?updateMask.fieldPaths=ytMetadataWarning`;
+  
+  const payload = {
+    fields: {
+      ytMetadataWarning: { stringValue: warningMessage }
+    }
+  };
+  
   UrlFetchApp.fetch(url, {
     method: "patch", contentType: "application/json",
     headers: { "Authorization": "Bearer " + token },
@@ -999,7 +1076,8 @@ function postToYouTube(token, post) {
       tags: ytTagsStr ? ytTagsStr.split(",").map(function (t) { return t.trim(); }) : []
     },
     status: {
-      privacyStatus: ytPrivacy
+      privacyStatus: ytPrivacy,
+      containsSyntheticMedia: (post.fields.ytAlteredContent?.stringValue !== "no")
     }
   };
 

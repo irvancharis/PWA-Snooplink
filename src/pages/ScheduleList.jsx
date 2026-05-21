@@ -187,7 +187,7 @@ const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia, user, onEdit }) =
                            <i className={`fab fa-${post.platform === 'facebook' ? 'facebook-f' : post.platform}`}></i>
                         </div>
                         <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                             <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-main)' }}>{post.accountName || 'Social Account'}</div>
                             {post.postType === 'live' && (
                               <span style={{ 
@@ -206,8 +206,25 @@ const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia, user, onEdit }) =
                                 LIVE
                               </span>
                             )}
+                            {post.isAutoLoop && (
+                              <span style={{ 
+                                background: 'linear-gradient(135deg, #f5f3ff, #ede9fe)', 
+                                color: '#7c3aed', 
+                                fontSize: '0.65rem', 
+                                padding: '0.1rem 0.4rem', 
+                                borderRadius: '6px', 
+                                fontWeight: 800,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.2rem',
+                                border: '1px solid #ddd6fe'
+                              }}>
+                                <Repeat size={10} />
+                                AUTO LOOP
+                              </span>
+                            )}
                           </div>
-                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>{post.platform}</div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'capitalize', marginTop: '0.1rem' }}>{post.platform}</div>
                         </div>
                       </div>
                     </td>
@@ -258,6 +275,20 @@ const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia, user, onEdit }) =
                         {post.status === 'Error' && post.error_log && (
                           <div style={{ fontSize: '0.65rem', color: '#ef4444', maxWidth: '150px', fontStyle: 'italic', padding: '0 0.4rem' }}>
                             Error: {post.error_log}
+                          </div>
+                        )}
+                        {post.ytMetadataWarning && (
+                          <div style={{ 
+                            fontSize: '0.65rem', 
+                            color: '#d97706', 
+                            fontStyle: 'italic', 
+                            padding: '0 0.4rem',
+                            maxWidth: '150px',
+                            whiteSpace: 'normal',
+                            wordBreak: 'break-word',
+                            marginTop: '0.2rem'
+                          }}>
+                            ⚠️ Gagal update metadata YouTube (Tags/Altered Content) karena masalah izin. Silakan hubungkan ulang akun YouTube Anda dan centang opsi izin mengelola video.
                           </div>
                         )}
                       </div>
@@ -352,12 +383,73 @@ const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia, user, onEdit }) =
                     {selectedPost.postType === 'live' && <Radio size={16} color="#ef4444" />}
                     {selectedPost.postType === 'live' ? 'Detail Live Stream' : 'Detail Postingan'}
                   </h3>
+
+                  {selectedPost.isAutoLoop && (
+                    <div style={{ 
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                      background: 'linear-gradient(135deg, #f5f3ff, #ede9fe)',
+                      color: '#7c3aed',
+                      padding: '0.3rem 0.8rem',
+                      borderRadius: '20px',
+                      fontSize: '0.75rem',
+                      fontWeight: 800,
+                      border: '1px solid #ddd6fe',
+                      marginBottom: '1rem'
+                    }}>
+                      <Repeat size={12} />
+                      JADWAL AUTO LOOP (SIARAN BERULANG 24/7)
+                    </div>
+                  )}
+
                   {selectedPost.ytTitle && (
                     <div style={{ fontWeight: 750, fontSize: '1rem', color: 'var(--text-main)', marginBottom: '0.6rem' }}>
                       Judul: {selectedPost.ytTitle}
                     </div>
                   )}
-                  <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{selectedPost.content}</p>
+                  <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', marginBottom: '1rem' }}>{selectedPost.content}</p>
+
+                  {selectedPost.platform === 'youtube' && (
+                    <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+                      {selectedPost.ytTags && (
+                        <div style={{ marginBottom: '0.8rem' }}>
+                          <strong style={{ color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem', fontSize: '0.8rem' }}>Tags Video:</strong>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                            {selectedPost.ytTags.split(',').map((tag, i) => (
+                              <span key={i} style={{ 
+                                background: '#eff6ff', 
+                                color: 'var(--primary)', 
+                                padding: '0.2rem 0.6rem', 
+                                borderRadius: '6px', 
+                                fontSize: '0.75rem', 
+                                fontWeight: 600,
+                                border: '1px solid #bfdbfe'
+                              }}>
+                                #{tag.trim()}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div style={{ marginBottom: '0.8rem' }}>
+                        <strong style={{ color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem', fontSize: '0.8rem' }}>Altered Content (AI Label):</strong>
+                        <span style={{ 
+                          fontWeight: 700, 
+                          fontSize: '0.8rem',
+                          background: (selectedPost.ytAlteredContent === 'no') ? '#f1f5f9' : '#fef3c7',
+                          color: (selectedPost.ytAlteredContent === 'no') ? '#475569' : '#d97706',
+                          padding: '0.25rem 0.6rem',
+                          borderRadius: '20px',
+                          display: 'inline-block',
+                          border: (selectedPost.ytAlteredContent === 'no') ? '1px solid #cbd5e1' : '1px solid #fde68a'
+                        }}>
+                          {selectedPost.ytAlteredContent === 'no' ? 'Tidak' : 'Ya - Konten diubah/sintetis (AI)'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
                   {selectedPost.postType === 'live' && (
                     <div style={{ 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Image as ImageIcon, Video, FileImage, X, RefreshCw, TrendingUp, Calendar, Zap, Sliders, CheckCircle2 } from 'lucide-react';
+import { Image as ImageIcon, Video, FileImage, X, RefreshCw, TrendingUp, Calendar, Zap, Sliders, CheckCircle2, Repeat } from 'lucide-react';
 
 const Dashboard = ({ posts: allPosts, onUseMedia, user, onViewAll }) => {
   const posts = allPosts.filter(p => p.status !== 'Deleted');
@@ -108,8 +108,46 @@ const Dashboard = ({ posts: allPosts, onUseMedia, user, onViewAll }) => {
                       </div>
                     </td>
                     <td style={{ padding: '1.2rem 1.5rem' }}>
-                      <div style={{ maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600, color: 'var(--text-main)' }}>
-                        {post.content}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', maxWidth: '300px' }}>
+                        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600, color: 'var(--text-main)' }}>
+                          {post.content}
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                          {post.postType === 'live' && (
+                            <span style={{ 
+                              background: '#fee2e2', 
+                              color: '#ef4444', 
+                              fontSize: '0.6rem', 
+                              padding: '0.05rem 0.3rem', 
+                              borderRadius: '4px', 
+                              fontWeight: 800,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.1rem',
+                              border: '1px solid #fca5a5'
+                            }}>
+                              <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#ef4444', display: 'inline-block' }} />
+                              LIVE
+                            </span>
+                          )}
+                          {post.isAutoLoop && (
+                            <span style={{ 
+                              background: 'linear-gradient(135deg, #f5f3ff, #ede9fe)', 
+                              color: '#7c3aed', 
+                              fontSize: '0.6rem', 
+                              padding: '0.05rem 0.3rem', 
+                              borderRadius: '4px', 
+                              fontWeight: 800,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.15rem',
+                              border: '1px solid #ddd6fe'
+                            }}>
+                              <Repeat size={10} />
+                              AUTO LOOP
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td style={{ padding: '1.2rem 1.5rem' }}>
@@ -135,6 +173,20 @@ const Dashboard = ({ posts: allPosts, onUseMedia, user, onViewAll }) => {
                         {post.status === 'Error' && post.error_log && (
                           <div style={{ fontSize: '0.6rem', color: '#ef4444', fontStyle: 'italic', paddingLeft: '0.5rem' }}>
                             {post.error_log}
+                          </div>
+                        )}
+                        {post.ytMetadataWarning && (
+                          <div style={{ 
+                            fontSize: '0.6rem', 
+                            color: '#d97706', 
+                            fontStyle: 'italic', 
+                            paddingLeft: '0.5rem',
+                            maxWidth: '180px',
+                            whiteSpace: 'normal',
+                            wordBreak: 'break-word',
+                            marginTop: '0.2rem'
+                          }}>
+                            ⚠️ Gagal update metadata YouTube (Tags/Altered Content) karena masalah izin. Silakan hubungkan ulang akun YouTube Anda dan centang opsi izin mengelola video.
                           </div>
                         )}
                       </div>
@@ -192,23 +244,95 @@ const Dashboard = ({ posts: allPosts, onUseMedia, user, onViewAll }) => {
               )}
             </div>
 
-            <div style={{ padding: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ flex: 1, marginRight: '2rem' }}>
-                <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '0.4rem' }}>Pratinjau Postingan</h3>
-                <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{selectedPost.content}</p>
+            <div style={{ padding: '2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ flex: 1, marginRight: '2rem' }}>
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '0.4rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    {selectedPost.postType === 'live' && <Zap size={16} color="#ef4444" />}
+                    {selectedPost.postType === 'live' ? 'Detail Live Stream' : 'Detail Postingan'}
+                  </h3>
+
+                  {selectedPost.isAutoLoop && (
+                    <div style={{ 
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                      background: 'linear-gradient(135deg, #f5f3ff, #ede9fe)',
+                      color: '#7c3aed',
+                      padding: '0.3rem 0.8rem',
+                      borderRadius: '20px',
+                      fontSize: '0.75rem',
+                      fontWeight: 800,
+                      border: '1px solid #ddd6fe',
+                      marginBottom: '1rem'
+                    }}>
+                      <Repeat size={12} />
+                      JADWAL AUTO LOOP (SIARAN BERULANG 24/7)
+                    </div>
+                  )}
+
+                  {selectedPost.ytTitle && (
+                    <div style={{ fontWeight: 750, fontSize: '1rem', color: 'var(--text-main)', marginBottom: '0.6rem' }}>
+                      Judul: {selectedPost.ytTitle}
+                    </div>
+                  )}
+                  <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', marginBottom: '1rem' }}>{selectedPost.content}</p>
+
+                  {selectedPost.platform === 'youtube' && (
+                    <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+                      {selectedPost.ytTags && (
+                        <div style={{ marginBottom: '0.8rem' }}>
+                          <strong style={{ color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem', fontSize: '0.8rem' }}>Tags Video:</strong>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                            {selectedPost.ytTags.split(',').map((tag, i) => (
+                              <span key={i} style={{ 
+                                background: '#eff6ff', 
+                                color: 'var(--primary)', 
+                                padding: '0.2rem 0.6rem', 
+                                borderRadius: '6px', 
+                                fontSize: '0.75rem', 
+                                fontWeight: 600,
+                                border: '1px solid #bfdbfe'
+                              }}>
+                                #{tag.trim()}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div style={{ marginBottom: '0.8rem' }}>
+                        <strong style={{ color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem', fontSize: '0.8rem' }}>Altered Content (AI Label):</strong>
+                        <span style={{ 
+                          fontWeight: 700, 
+                          fontSize: '0.8rem',
+                          background: (selectedPost.ytAlteredContent === 'no') ? '#f1f5f9' : '#fef3c7',
+                          color: (selectedPost.ytAlteredContent === 'no') ? '#475569' : '#d97706',
+                          padding: '0.25rem 0.6rem',
+                          borderRadius: '20px',
+                          display: 'inline-block',
+                          border: (selectedPost.ytAlteredContent === 'no') ? '1px solid #cbd5e1' : '1px solid #fde68a'
+                        }}>
+                          {selectedPost.ytAlteredContent === 'no' ? 'Tidak' : 'Ya - Konten diubah/sintetis (AI)'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {onUseMedia && (
+                  <button 
+                    className="btn btn-primary"
+                    onClick={() => {
+                      onUseMedia(selectedPost.mediaUrl);
+                      setSelectedPost(null);
+                    }}
+                    style={{ alignSelf: 'flex-start' }}
+                  >
+                    <RefreshCw size={18} />
+                    <span>Gunakan Lagi</span>
+                  </button>
+                )}
               </div>
-              {onUseMedia && (
-                <button 
-                  className="btn btn-primary"
-                  onClick={() => {
-                    onUseMedia(selectedPost.mediaUrl);
-                    setSelectedPost(null);
-                  }}
-                >
-                  <RefreshCw size={18} />
-                  <span>Gunakan Lagi</span>
-                </button>
-              )}
             </div>
           </div>
         </div>

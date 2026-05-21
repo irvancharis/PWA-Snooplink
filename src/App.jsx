@@ -308,6 +308,7 @@ function App() {
           postDoc.ytPrivacy = postData.ytPrivacy || 'public';
           postDoc.ytCategoryId = postData.ytCategoryId || '22';
           postDoc.ytThumbnail = postData.ytThumbnail || null;
+          postDoc.ytAlteredContent = postData.ytAlteredContent || 'yes';
         } else if (acc.platform === 'facebook') {
           postDoc.linkUrl = postData.linkUrl || '';
         }

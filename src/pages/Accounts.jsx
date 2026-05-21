@@ -83,7 +83,7 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
       `client_id=${clientId}` +
       `&redirect_uri=${encodeURIComponent(redirectUri)}` +
       `&response_type=code` +
-      `&scope=${encodeURIComponent('https://www.googleapis.com/auth/youtube https://www.googleapis.com/auth/youtube.readonly')}` +
+      `&scope=${encodeURIComponent('https://www.googleapis.com/auth/youtube https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/youtube.force-ssl')}` +
       `&access_type=offline` +
       `&prompt=consent`;
 
