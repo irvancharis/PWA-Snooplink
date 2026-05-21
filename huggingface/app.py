@@ -354,10 +354,10 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                     'error_log': 'Hugging Face: Menempelkan gambar stamp...'
                 })
             
-            # Note: Explicit setsar=1 added after scale2ref to prevent horizontally stretched (lonjong) stamp
+            # Scale the stamp proportionally using h=-2 which automatically accounts for reference SAR to prevent distortion (lonjong)
             stamp_cmd = [
                 "ffmpeg", "-y", "-i", temp_video_path, "-loop", "1", "-i", temp_stamp_path,
-                "-filter_complex", "[1:v][0:v]scale2ref=w=rw*0.12:h=ow*ih/iw[stamp_raw][video];[stamp_raw]setsar=1[stamp];[video][stamp]overlay=main_w-overlay_w-10:main_h-overlay_h-10:shortest=1[outv]",
+                "-filter_complex", "[1:v][0:v]scale2ref=w=rw*0.12:h=-2[stamp][video];[video][stamp]overlay=main_w-overlay_w-10:main_h-overlay_h-10:shortest=1[outv]",
                 "-map", "[outv]", "-map", "0:a?",
                 "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
                 "-c:a", "copy",
