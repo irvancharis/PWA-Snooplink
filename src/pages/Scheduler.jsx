@@ -35,6 +35,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
   const [ytPrivacy, setYtPrivacy] = useState('public');
   const [ytCategoryId, setYtCategoryId] = useState('22');
   const [ytThumbnailUrl, setYtThumbnailUrl] = useState('');
+  const [randomThumbnail, setRandomThumbnail] = useState(false);
 
   // Live stream specific state
   const [postType, setPostType] = useState('post'); // 'post' or 'live'
@@ -101,7 +102,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
   // Edit Mode initialization
   useEffect(() => {
     if (editPost) {
-      setContent(editPost.content || '');
+      setContent(editPost.contentTemplate || editPost.content || '');
       setSelectedAccountIds(editPost.accountId ? [editPost.accountId] : []);
       
       let d = '';
@@ -118,7 +119,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
       setDaysOfWeek(editPost.daysOfWeek || []);
       setScheduledTime(editPost.scheduledTime || '');
       
-      setYtTitle(editPost.ytTitle || '');
+      setYtTitle(editPost.ytTitleTemplate || editPost.ytTitle || '');
       setYtTags(editPost.ytTags || '');
       setYtPrivacy(editPost.ytPrivacy || 'public');
       setYtCategoryId(editPost.ytCategoryId || '22');
@@ -142,6 +143,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
       setSelectedBacksoundUrls(editPost.backsoundUrls || []);
       setRandomMusicCount(editPost.randomMusicCount || 1);
       setImageStampUrl(editPost.imageStampUrl || '');
+      setRandomThumbnail(editPost.randomThumbnail || false);
     } else {
       // Clear/Reset form when not editing
       setContent('');
@@ -171,6 +173,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
       setSelectedBacksoundUrls([]);
       setRandomMusicCount(1);
       setImageStampUrl('');
+      setRandomThumbnail(false);
     }
   }, [editPost, accounts]);
 
@@ -416,6 +419,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
       const activeAcc = accounts.find(a => selectedAccountIds.includes(a.id));
       payload = {
         content,
+        contentTemplate: content,
         mediaUrl: randomVideo ? "" : mediaUrl,
         mediaType: randomVideo ? "" : (isVideo(mediaUrl) ? "video/mp4" : "image/jpeg"),
         fileName: randomVideo ? "Random Video Selection" : (mediaList.find(m => m.mediaUrl === mediaUrl)?.fileName || "Media_Pustaka"),
@@ -441,10 +445,12 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
           randomVideo,
           randomMusic: backsoundMode === 'random',
           randomMusicCount: backsoundMode === 'random' ? Number(randomMusicCount) : 1,
-          backsoundUrls: backsoundMode === 'select' ? selectedBacksoundUrls : []
+          backsoundUrls: backsoundMode === 'select' ? selectedBacksoundUrls : [],
+          randomThumbnail
         }),
         ...((activeAcc?.platform === 'youtube' || editPost.platform === 'youtube') && {
           ytTitle,
+          ytTitleTemplate: ytTitle,
           ytTags,
           ytPrivacy,
           ytCategoryId,
@@ -454,6 +460,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
     } else {
       payload = {
         content,
+        contentTemplate: content,
         accounts: targetAccounts,
         mediaUrl: randomVideo ? "" : mediaUrl,
         mediaType: randomVideo ? "" : (isVideo(mediaUrl) ? "video/mp4" : "image/jpeg"),
@@ -476,10 +483,12 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
           randomVideo,
           randomMusic: backsoundMode === 'random',
           randomMusicCount: backsoundMode === 'random' ? Number(randomMusicCount) : 1,
-          backsoundUrls: backsoundMode === 'select' ? selectedBacksoundUrls : []
+          backsoundUrls: backsoundMode === 'select' ? selectedBacksoundUrls : [],
+          randomThumbnail
         }),
         ...(hasYoutubeSelected && {
           ytTitle,
+          ytTitleTemplate: ytTitle,
           ytTags,
           ytPrivacy,
           ytCategoryId,
@@ -2103,114 +2112,161 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
               {/* Custom YouTube Thumbnail Selector */}
               {hasYoutubeSelected && (
                 <div style={{ background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', marginTop: '1.2rem' }}>
-                  <span style={{ fontWeight: 800, color: 'var(--text-main)', fontSize: '0.85rem', display: 'block', marginBottom: '0.8rem' }}>Thumbnail Kustom YouTube (Opsional)</span>
-                  
-                  {ytThumbnailUrl ? (
-                    /* Custom Thumbnail Active Preview */
-                    <div style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'space-between',
-                      background: '#fffdf5', 
-                      border: '2px solid #fef08a', 
-                      padding: '1rem', 
-                      borderRadius: '12px', 
-                      gap: '1rem'
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', overflow: 'hidden', flex: 1 }}>
-                        <img src={getDirectLink(ytThumbnailUrl)} alt="Thumbnail" style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover', flexShrink: 0 }} />
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem', overflow: 'hidden' }}>
-                          <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#b45309', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            Thumbnail Kustom Aktif
-                          </span>
-                          <span style={{ fontSize: '0.7rem', color: '#d97706', fontWeight: 600 }}>
-                            Siap diunggah sebagai cover siaran
-                          </span>
-                        </div>
-                      </div>
-                      <button 
-                        type="button" 
-                        onClick={() => setYtThumbnailUrl('')} 
-                        style={{ 
-                          border: 'none', 
-                          background: '#fef3c7', 
-                          cursor: 'pointer', 
-                          color: '#d97706', 
-                          display: 'flex', 
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          width: '32px',
-                          height: '32px',
-                          borderRadius: '50%',
-                        }}
-                      >
-                        <X size={16} />
-                      </button>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <span style={{ fontWeight: 800, color: 'var(--text-main)', fontSize: '0.85rem' }}>Thumbnail Kustom YouTube (Opsional)</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: randomThumbnail ? '#10b981' : 'var(--text-muted)' }}>Thumbnail Acak (Random)</span>
+                      <label className="switch-container">
+                        <input 
+                          type="checkbox" 
+                          className="switch-input"
+                          checked={randomThumbnail} 
+                          onChange={(e) => setRandomThumbnail(e.target.checked)} 
+                        />
+                        <span className="switch-slider" />
+                      </label>
                     </div>
-                  ) : (
-                    /* Default/Automatic Thumbnail Selection */
-                    <div style={{ 
-                      border: '2px dashed #e2e8f0', 
-                      borderRadius: '12px', 
-                      padding: '1.5rem 1rem', 
-                      background: '#fff',
-                      textAlign: 'center',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '0.8rem',
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#10b981' }}>
-                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
-                        <span style={{ fontSize: '0.8rem', fontWeight: 800 }}>Menggunakan Thumbnail Otomatis (Default)</span>
-                      </div>
-                      <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 500 }}>
-                        Youtube akan otomatis memilih cuplikan gambar dari video Anda sebagai cover.
-                      </p>
-                      <div style={{ display: 'flex', gap: '0.5rem', width: '100%', maxWidth: '280px', justifyContent: 'center', marginTop: '0.2rem' }}>
+                  </div>
+                  
+                  {!randomThumbnail ? (
+                    ytThumbnailUrl ? (
+                      /* Custom Thumbnail Active Preview */
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between',
+                        background: '#fffdf5', 
+                        border: '2px solid #fef08a', 
+                        padding: '1rem', 
+                        borderRadius: '12px', 
+                        gap: '1rem'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', overflow: 'hidden', flex: 1 }}>
+                          <img src={getDirectLink(ytThumbnailUrl)} alt="Thumbnail" style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover', flexShrink: 0 }} />
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem', overflow: 'hidden' }}>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#b45309', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              Thumbnail Kustom Aktif
+                            </span>
+                            <span style={{ fontSize: '0.7rem', color: '#d97706', fontWeight: 600 }}>
+                              Siap diunggah sebagai cover siaran
+                            </span>
+                          </div>
+                        </div>
                         <button 
                           type="button" 
-                          className="btn" 
+                          onClick={() => setYtThumbnailUrl('')} 
                           style={{ 
+                            border: 'none', 
+                            background: '#fef3c7', 
+                            cursor: 'pointer', 
+                            color: '#d97706', 
+                            display: 'flex', 
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '50%',
+                          }}
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    ) : (
+                      /* Default/Automatic Thumbnail Selection */
+                      <div style={{ 
+                        border: '2px dashed #e2e8f0', 
+                        borderRadius: '12px', 
+                        padding: '1.5rem 1rem', 
+                        background: '#fff',
+                        textAlign: 'center',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.8rem',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#10b981' }}>
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
+                          <span style={{ fontSize: '0.8rem', fontWeight: 800 }}>Menggunakan Thumbnail Otomatis (Default)</span>
+                        </div>
+                        <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+                          Youtube akan otomatis memilih cuplikan gambar dari video Anda sebagai cover.
+                        </p>
+                        <div style={{ display: 'flex', gap: '0.5rem', width: '100%', maxWidth: '280px', justifyContent: 'center', marginTop: '0.2rem' }}>
+                          <button 
+                            type="button" 
+                            className="btn" 
+                            style={{ 
+                              flex: 1,
+                              justifyContent: 'center',
+                              padding: '0.4rem 0.6rem', 
+                              background: '#fffbeb', 
+                              color: '#d97706', 
+                              borderRadius: '8px', 
+                              fontSize: '0.75rem', 
+                              height: '34px', 
+                              border: 'none', 
+                              fontWeight: 700, 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              gap: '0.3rem', 
+                              cursor: 'pointer' 
+                            }}
+                            onClick={() => openSelectorModal('thumbnail')}
+                          >
+                            <ImageIcon size={12} /> Pustaka
+                          </button>
+                          <label className="btn" style={{ 
                             flex: 1,
                             justifyContent: 'center',
                             padding: '0.4rem 0.6rem', 
-                            background: '#fffbeb', 
-                            color: '#d97706', 
+                            border: '1px solid #cbd5e1', 
+                            cursor: 'pointer', 
                             borderRadius: '8px', 
+                            background: '#fff', 
                             fontSize: '0.75rem', 
                             height: '34px', 
-                            border: 'none', 
-                            fontWeight: 700, 
                             display: 'flex', 
                             alignItems: 'center', 
                             gap: '0.3rem', 
-                            cursor: 'pointer' 
-                          }}
-                          onClick={() => openSelectorModal('thumbnail')}
-                        >
-                          <ImageIcon size={12} /> Pustaka
-                        </button>
-                        <label className="btn" style={{ 
-                          flex: 1,
-                          justifyContent: 'center',
-                          padding: '0.4rem 0.6rem', 
-                          border: '1px solid #cbd5e1', 
-                          cursor: 'pointer', 
-                          borderRadius: '8px', 
-                          background: '#fff', 
-                          fontSize: '0.75rem', 
-                          height: '34px', 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          gap: '0.3rem', 
-                          fontWeight: 700, 
-                          margin: 0 
-                        }}>
-                          <UploadCloud size={12} style={{ color: 'var(--text-muted)' }} /> Unggah Baru
-                          <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleInlineUpload(e, 'gambar', (url) => setYtThumbnailUrl(url))} />
-                        </label>
+                            fontWeight: 700, 
+                            margin: 0 
+                          }}>
+                            <UploadCloud size={12} style={{ color: 'var(--text-muted)' }} /> Unggah Baru
+                            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleInlineUpload(e, 'gambar', (url) => setYtThumbnailUrl(url))} />
+                          </label>
+                        </div>
+                      </div>
+                    )
+                  ) : (
+                    /* Random Thumbnail Enabled State */
+                    <div style={{ 
+                      padding: '1.2rem', 
+                      background: '#ecfdf5', 
+                      borderRadius: '12px', 
+                      border: '2px solid #a7f3d0', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '1rem' 
+                    }}>
+                      <div style={{ 
+                        width: '40px', 
+                        height: '40px', 
+                        borderRadius: '50%', 
+                        background: '#d1fae5', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        color: '#059669',
+                        flexShrink: 0
+                      }}>
+                        <CheckCircle2 size={20} />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#047857' }}>Thumbnail Acak Aktif</span>
+                        <span style={{ fontSize: '0.72rem', color: '#065f46', fontWeight: 600 }}>
+                          Sistem akan otomatis memilih gambar acak dari Pustaka Media Anda untuk dijadikan cover siaran langsung YouTube.
+                        </span>
                       </div>
                     </div>
                   )}

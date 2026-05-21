@@ -102,25 +102,18 @@ function autoCheckAndPost() {
               execFields.status = { stringValue: "Processing" };
               execFields.time = { stringValue: currentMinuteString };
 
-              // Resolve random media if needed
-              const isRandomVideo = post.fields.randomVideo?.booleanValue || false;
-              const isRandomMusic = post.fields.randomMusic?.booleanValue || false;
-
-              if (isRandomVideo) {
-                var randomVideos = resolveRandomMedia(userId, "video", 1);
-                if (randomVideos.length > 0) {
-                  execFields.mediaUrl = { stringValue: randomVideos[0].mediaUrl };
-                  execFields.mediaType = { stringValue: randomVideos[0].mediaType };
-                  execFields.fileName = { stringValue: randomVideos[0].fileName };
-                  execFields.fileSize = { integerValue: randomVideos[0].fileSize.toString() };
-                }
+              // Clear resolved values if random mode is active to force re-evaluation in executePost
+              if (execFields.randomVideo?.booleanValue) {
+                delete execFields.mediaUrl;
+                delete execFields.mediaType;
+                delete execFields.fileName;
+                delete execFields.fileSize;
               }
-
-              if (isRandomMusic) {
-                var randomCount = parseInt(post.fields.randomMusicCount?.integerValue || 1, 10);
-                var randomAudios = resolveRandomMedia(userId, "musik", randomCount);
-                var urls = randomAudios.map(a => a.mediaUrl);
-                execFields.backsoundUrls = { arrayValue: { values: urls.map(u => ({ stringValue: u })) } };
+              if (execFields.randomMusic?.booleanValue) {
+                delete execFields.backsoundUrls;
+              }
+              if (execFields.randomThumbnail?.booleanValue) {
+                delete execFields.ytThumbnail;
               }
 
               // Buat dokumen post baru
@@ -150,37 +143,7 @@ function autoCheckAndPost() {
               // 1. Ubah status segera ke "Processing"
               updateFirestoreStatus(postId, "Processing");
 
-              // 2. Resolve random media jika tercentang pada postingan reguler
-              const isRandomVideo = post.fields.randomVideo?.booleanValue || false;
-              const isRandomMusic = post.fields.randomMusic?.booleanValue || false;
-
-              if (isRandomVideo || isRandomMusic) {
-                var updates = {};
-                var fieldPaths = [];
-
-                if (isRandomVideo) {
-                  var randomVideos = resolveRandomMedia(userId, "video", 1);
-                  if (randomVideos.length > 0) {
-                    updates.mediaUrl = { stringValue: randomVideos[0].mediaUrl };
-                    updates.mediaType = { stringValue: randomVideos[0].mediaType };
-                    updates.fileName = { stringValue: randomVideos[0].fileName };
-                    updates.fileSize = { integerValue: randomVideos[0].fileSize.toString() };
-                    fieldPaths.push("mediaUrl", "mediaType", "fileName", "fileSize");
-                  }
-                }
-
-                if (isRandomMusic) {
-                  var randomCount = parseInt(post.fields.randomMusicCount?.integerValue || 1, 10);
-                  var randomAudios = resolveRandomMedia(userId, "musik", randomCount);
-                  var urls = randomAudios.map(a => a.mediaUrl);
-                  updates.backsoundUrls = { arrayValue: { values: urls.map(u => ({ stringValue: u })) } };
-                  fieldPaths.push("backsoundUrls");
-                }
-
-                if (fieldPaths.length > 0) {
-                  updateFirestoreFields(postId, updates, fieldPaths);
-                }
-              }
+              // 2. Siapkan request panggilan paralel (random media & spintax will be resolved inside executePost)
 
               // 3. Siapkan request panggilan paralel
               requests.push({
@@ -315,6 +278,109 @@ const HF_SPACE_URL = "https://irvancharis-live1.hf.space/start_stream";
 // MODIFIKASI FUNGSI UTAMA EXECUTEPOST (INTEGRASI LIVE & POSTING BIASA)
 // =========================================================================
 function executePost(post, postId) {
+  console.log("=== MEMULAI EKSEKUSI POST ===");
+  console.log("ID Postingan: " + postId);
+
+  // 1. RESOLVE RANDOM MEDIA, THUMBNAILS, & SPINTAX
+  const userId = post.fields.userId?.stringValue || "";
+  const isRandomVideo = post.fields.randomVideo?.booleanValue || false;
+  const isRandomMusic = post.fields.randomMusic?.booleanValue || false;
+  const isRandomThumbnail = post.fields.randomThumbnail?.booleanValue || false;
+
+  var updates = {};
+  var fieldPaths = [];
+
+  // Random Video
+  if (isRandomVideo) {
+    var randomVideos = resolveRandomMedia(userId, "video", 1);
+    if (randomVideos.length > 0) {
+      updates.mediaUrl = { stringValue: randomVideos[0].mediaUrl };
+      updates.mediaType = { stringValue: randomVideos[0].mediaType };
+      updates.fileName = { stringValue: randomVideos[0].fileName };
+      updates.fileSize = { integerValue: randomVideos[0].fileSize.toString() };
+      fieldPaths.push("mediaUrl", "mediaType", "fileName", "fileSize");
+      
+      // Update local post.fields object
+      post.fields.mediaUrl = updates.mediaUrl;
+      post.fields.mediaType = updates.mediaType;
+      post.fields.fileName = updates.fileName;
+      post.fields.fileSize = updates.fileSize;
+    }
+  }
+
+  // Random Music
+  if (isRandomMusic) {
+    var randomCount = parseInt(post.fields.randomMusicCount?.integerValue || 1, 10);
+    var randomAudios = resolveRandomMedia(userId, "musik", randomCount);
+    var urls = randomAudios.map(a => a.mediaUrl);
+    updates.backsoundUrls = { arrayValue: { values: urls.map(u => ({ stringValue: u })) } };
+    fieldPaths.push("backsoundUrls");
+
+    // Update local post.fields object
+    post.fields.backsoundUrls = updates.backsoundUrls;
+  }
+
+  // Random Thumbnail
+  if (isRandomThumbnail) {
+    var randomThumbs = resolveRandomMedia(userId, "gambar", 1);
+    if (randomThumbs.length > 0) {
+      updates.ytThumbnail = { stringValue: randomThumbs[0].mediaUrl };
+      fieldPaths.push("ytThumbnail");
+
+      // Update local post.fields object
+      post.fields.ytThumbnail = updates.ytThumbnail;
+    }
+  }
+
+  // Spintax for YouTube Title
+  const titleTemplate = post.fields.ytTitleTemplate?.stringValue || post.fields.ytTitle?.stringValue || "";
+  if (titleTemplate) {
+    const spunTitle = parseSpintax(titleTemplate);
+    updates.ytTitle = { stringValue: spunTitle };
+    updates.ytTitleTemplate = { stringValue: titleTemplate };
+    fieldPaths.push("ytTitle", "ytTitleTemplate");
+
+    // Update local post.fields object
+    post.fields.ytTitle = updates.ytTitle;
+    post.fields.ytTitleTemplate = updates.ytTitleTemplate;
+  }
+
+  // Spintax for Content / Description
+  const contentTemplate = post.fields.contentTemplate?.stringValue || post.fields.content?.stringValue || "";
+  if (contentTemplate) {
+    const spunContent = parseSpintax(contentTemplate);
+    updates.content = { stringValue: spunContent };
+    updates.contentTemplate = { stringValue: contentTemplate };
+    fieldPaths.push("content", "contentTemplate");
+
+    // Update local post.fields object
+    post.fields.content = updates.content;
+    post.fields.contentTemplate = updates.contentTemplate;
+  }
+
+  // Spintax for YouTube Tags
+  const tagsTemplate = post.fields.ytTagsTemplate?.stringValue || post.fields.ytTags?.stringValue || "";
+  if (tagsTemplate) {
+    const spunTags = parseSpintax(tagsTemplate);
+    updates.ytTags = { stringValue: spunTags };
+    updates.ytTagsTemplate = { stringValue: tagsTemplate };
+    fieldPaths.push("ytTags", "ytTagsTemplate");
+
+    // Update local post.fields object
+    post.fields.ytTags = updates.ytTags;
+    post.fields.ytTagsTemplate = updates.ytTagsTemplate;
+  }
+
+  // Commit updates to Firestore immediately
+  if (fieldPaths.length > 0) {
+    try {
+      updateFirestoreFields(postId, updates, fieldPaths);
+      console.log("Berhasil memperbarui field yang di-resolve/spun di Firestore untuk ID: " + postId);
+    } catch (dbErr) {
+      console.error("Gagal menyimpan update resolve/spun ke Firestore: " + dbErr.message);
+    }
+  }
+
   const platform = post.fields.platform?.stringValue;
   let content = post.fields.content?.stringValue || "";
   const mediaUrl = post.fields.mediaUrl?.stringValue;
@@ -323,8 +389,6 @@ function executePost(post, postId) {
   const postType = post.fields.postType?.stringValue || "post";
   const tierLocation = post.fields.tierLocation?.stringValue || "none";
 
-  console.log("=== MEMULAI EKSEKUSI POST ===");
-  console.log("ID Postingan: " + postId);
   console.log("Tipe Postingan: " + postType);
   console.log("Platform: " + platform);
   console.log("Tier Target Audience: " + tierLocation);
@@ -1097,6 +1161,20 @@ function doPost(e) {
       if (nextFields.redirectUrl) delete nextFields.redirectUrl;
       if (nextFields.error_log) delete nextFields.error_log;
       if (nextFields.lastExecutedMinute) delete nextFields.lastExecutedMinute;
+
+      // Bersihkan media yang ter-resolve jika mode acak diaktifkan agar Live 2 me-resolve ulang
+      if (nextFields.randomVideo?.booleanValue) {
+        if (nextFields.mediaUrl) delete nextFields.mediaUrl;
+        if (nextFields.mediaType) delete nextFields.mediaType;
+        if (nextFields.fileName) delete nextFields.fileName;
+        if (nextFields.fileSize) delete nextFields.fileSize;
+      }
+      if (nextFields.randomMusic?.booleanValue) {
+        if (nextFields.backsoundUrls) delete nextFields.backsoundUrls;
+      }
+      if (nextFields.randomThumbnail?.booleanValue) {
+        if (nextFields.ytThumbnail) delete nextFields.ytThumbnail;
+      }
       
       // Simpan link parentPostId agar Live 2 bisa memicu redirect
       nextFields.parentPostId = { stringValue: parentPostId };
@@ -1547,6 +1625,21 @@ function diagnoseSinglePost() {
   } else {
     console.log("Post tidak ditemukan di Firestore.");
   }
+}
+
+// ==========================================
+// SPINTAX PARSER HELPER
+// ==========================================
+function parseSpintax(text) {
+  if (!text) return "";
+  var regex = /\{([^{}]+)\}/;
+  var match;
+  while ((match = regex.exec(text)) !== null) {
+    var parts = match[1].split('|');
+    var randomPart = parts[Math.floor(Math.random() * parts.length)];
+    text = text.substring(0, match.index) + randomPart.trim() + text.substring(match.index + match[0].length);
+  }
+  return text;
 }
 
 

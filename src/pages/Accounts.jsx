@@ -116,7 +116,7 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
           
           const data = await response.json();
           if (data.refresh_token) {
-            if (reconnectAcc) {
+            if (reconnectAcc && reconnectAcc.id && typeof reconnectAcc.id === 'string') {
               onUpdate(reconnectAcc.id, {
                 ...reconnectAcc,
                 accessToken: data.refresh_token
@@ -494,7 +494,7 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
                         </p>
                         <button 
                           type="button"
-                          onClick={handleGoogleLogin}
+                          onClick={() => handleGoogleLogin(null)}
                           style={{ 
                             background: '#fff', border: '1px solid #e2e8f0', color: 'var(--text-main)', 
                             fontWeight: 700, padding: '1rem', borderRadius: '16px', cursor: 'pointer',
