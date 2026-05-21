@@ -46,23 +46,12 @@ except Exception as e:
     print(f"Error initializing Firebase: {e}")
 
 # =========================================================================
-# STATE MANAGER & STREAM CONTROL
+# STATE MANAGER & STREAM CONTROL (MULTI-STREAM CONCURRENT SUPPORT)
 # =========================================================================
 stream_lock = threading.Lock()
-active_stream = {
-    "status": "IDLE",       # IDLE, DOWNLOADING, STREAMING, ERROR
-    "post_id": None,
-    "video_url": None,
-    "rtmp_url": None,
-    "duration": None,
-    "start_time": None,
-    "error_message": "",
-    "process": None,        # Popen instance FFmpeg
-    "logs": []
-}
+active_streams = {}  # Dictionary mapping post_id -> active_stream details
 
 HF_SECRET = os.getenv("HF_SECRET", "SnooplinkSuperSecret123")
-TEMP_VIDEO_PATH = "/tmp/stream_input.mp4"
 
 # =========================================================================
 # GOOGLE DRIVE DOWNLOAD & WARNING BYPASS LOGIC
@@ -196,18 +185,60 @@ def end_youtube_broadcast(post_id):
 # =========================================================================
 # STREAMING RUNNER THREAD
 # =========================================================================
+def trigger_next_live(parent_post_id):
+    if not db:
+        print("Firebase DB not initialized, skipping next live trigger.")
+        return
+    try:
+        config_ref = db.collection('settings').document('config')
+        config_doc = config_ref.get()
+        if not config_doc.exists:
+            print("Config settings not found in Firestore.")
+            return
+        config_data = config_doc.to_dict() or {}
+        web_app_url = config_data.get('webAppUrl')
+        if not web_app_url:
+            print("webAppUrl not configured in Firestore.")
+            return
+        
+        url = f"{web_app_url}?action=triggerNextLive&parentPostId={parent_post_id}"
+        print(f"Triggering next live via GAS: {url}")
+        
+        def fire_request():
+            try:
+                res = requests.post(url, timeout=30)
+                print(f"GAS triggerNextLive response: {res.status_code} - {res.text}")
+            except Exception as req_err:
+                print(f"Failed to fire GAS triggerNextLive: {req_err}")
+                
+        threading.Thread(target=fire_request, daemon=True).start()
+    except Exception as e:
+        print(f"Error in trigger_next_live: {e}")
+
+# =========================================================================
+# STREAMING RUNNER THREAD
+# =========================================================================
 def run_streaming_process(post_id, video_url, rtmp_url, duration):
-    global active_stream
+    global active_streams
     
     with stream_lock:
-        active_stream["status"] = "DOWNLOADING"
-        active_stream["post_id"] = post_id
-        active_stream["video_url"] = video_url
-        active_stream["rtmp_url"] = rtmp_url
-        active_stream["duration"] = duration
-        active_stream["start_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        active_stream["error_message"] = ""
-        active_stream["logs"] = ["Memulai pengunduhan video dari Google Drive..."]
+        active_streams[post_id] = {
+            "status": "DOWNLOADING",
+            "post_id": post_id,
+            "video_url": video_url,
+            "rtmp_url": rtmp_url,
+            "duration": duration,
+            "start_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "error_message": "",
+            "process": None,
+            "logs": ["Memulai pengunduhan video dari Google Drive..."]
+        }
+        
+    temp_video_path = f"/tmp/stream_input_{post_id}.mp4"
+    temp_combined_audio_path = f"/tmp/backsound_combined_{post_id}.mp3"
+    temp_standard_audio_path = f"/tmp/backsound_standard_{post_id}.mp3"
+    temp_stamp_path = f"/tmp/image_stamp_{post_id}.png"
+    temp_stamped_video_path = f"/tmp/stream_input_stamped_{post_id}.mp4"
         
     try:
         bitrate = "copy"
@@ -231,15 +262,16 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
             })
             
         # 2. Download file locally to avoid FFmpeg seek/network problems on looped streams
-        download_video(video_url, TEMP_VIDEO_PATH)
+        download_video(video_url, temp_video_path)
         
         # Download and process backsounds if provided
         downloaded_backsounds = []
         if backsound_urls:
             with stream_lock:
-                active_stream["logs"].append("Mengunduh file backsound MP3...")
+                if post_id in active_streams:
+                    active_streams[post_id]["logs"].append("Mengunduh file backsound MP3...")
             for idx, bs_url in enumerate(backsound_urls):
-                bs_path = f"/tmp/backsound_{idx}.mp3"
+                bs_path = f"/tmp/backsound_{post_id}_{idx}.mp3"
                 if db:
                     db.collection('posts').document(post_id).update({
                         'error_log': f'Hugging Face: Mengunduh backsound {idx+1}/{len(backsound_urls)}...'
@@ -250,7 +282,8 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
             # Concatenate backsounds if multiple
             if len(downloaded_backsounds) > 1:
                 with stream_lock:
-                    active_stream["logs"].append("Menggabungkan file-file backsound...")
+                    if post_id in active_streams:
+                        active_streams[post_id]["logs"].append("Menggabungkan file-file backsound...")
                 concat_cmd = ["ffmpeg", "-y"]
                 for bs in downloaded_backsounds:
                     concat_cmd.extend(["-i", bs])
@@ -266,12 +299,12 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                     "-filter_complex", filter_str,
                     "-map", "[outa]",
                     "-c:a", "libmp3lame", "-b:a", "192k", "-ar", "44100", "-ac", "2",
-                    "/tmp/backsound_combined.mp3"
+                    temp_combined_audio_path
                 ])
                 res = subprocess.run(concat_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 if res.returncode != 0:
                     raise Exception(f"Gagal menggabungkan backsound: {res.stderr.decode('utf-8', errors='ignore')}")
-                combined_audio_path = "/tmp/backsound_combined.mp3"
+                combined_audio_path = temp_combined_audio_path
                 
                 # Cleanup raw downloaded backsound files to save space
                 for bs in downloaded_backsounds:
@@ -280,57 +313,57 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                         except: pass
             elif len(downloaded_backsounds) == 1:
                 # Standardize single audio file to stereo 44100Hz to prevent playback issues
-                standard_path = "/tmp/backsound_standard.mp3"
-                cmd = ["ffmpeg", "-y", "-i", downloaded_backsounds[0], "-c:a", "libmp3lame", "-b:a", "192k", "-ar", "44100", "-ac", "2", standard_path]
+                cmd = ["ffmpeg", "-y", "-i", downloaded_backsounds[0], "-c:a", "libmp3lame", "-b:a", "192k", "-ar", "44100", "-ac", "2", temp_standard_audio_path]
                 res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 if res.returncode == 0:
-                    combined_audio_path = standard_path
+                    combined_audio_path = temp_standard_audio_path
                 else:
                     combined_audio_path = downloaded_backsounds[0]
         
         # Process image stamp watermark cover if provided
         if image_stamp_url:
             with stream_lock:
-                active_stream["logs"].append("Mengunduh gambar stamp untuk watermark cover...")
-            stamp_path = "/tmp/image_stamp.png"
+                if post_id in active_streams:
+                    active_streams[post_id]["logs"].append("Mengunduh gambar stamp untuk watermark cover...")
             if db:
                 db.collection('posts').document(post_id).update({
                     'error_log': 'Hugging Face: Mengunduh gambar stamp...'
                 })
-            download_video(image_stamp_url, stamp_path)
+            download_video(image_stamp_url, temp_stamp_path)
             
             with stream_lock:
-                active_stream["logs"].append("Menempelkan gambar stamp ke video (5% dari konten)...")
+                if post_id in active_streams:
+                    active_streams[post_id]["logs"].append("Menempelkan gambar stamp ke video (5% dari konten)...")
             if db:
                 db.collection('posts').document(post_id).update({
                     'error_log': 'Hugging Face: Menempelkan gambar stamp...'
                 })
             
             stamp_cmd = [
-                "ffmpeg", "-y", "-i", TEMP_VIDEO_PATH, "-loop", "1", "-i", stamp_path,
+                "ffmpeg", "-y", "-i", temp_video_path, "-loop", "1", "-i", temp_stamp_path,
                 "-filter_complex", "[1:v][0:v]scale2ref=w=iw*0.05:h=-1[stamp][video];[video][stamp]overlay=main_w-overlay_w-10:main_h-overlay_h-10:shortest=1[outv]",
                 "-map", "[outv]", "-map", "0:a?",
                 "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
                 "-c:a", "copy",
-                "/tmp/stream_input_stamped.mp4"
+                temp_stamped_video_path
             ]
             res = subprocess.run(stamp_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if res.returncode != 0:
                 raise Exception(f"Gagal menempelkan gambar stamp: {res.stderr.decode('utf-8', errors='ignore')}")
-            os.replace("/tmp/stream_input_stamped.mp4", TEMP_VIDEO_PATH)
+            os.replace(temp_stamped_video_path, temp_video_path)
             
             # Cleanup downloaded image stamp
-            if os.path.exists(stamp_path):
-                try: os.remove(stamp_path)
+            if os.path.exists(temp_stamp_path):
+                try: os.remove(temp_stamp_path)
                 except: pass
         
         # Check if cancelled during download/processing
         with stream_lock:
-            if active_stream["post_id"] != post_id or active_stream["status"] == "IDLE":
+            if post_id not in active_streams or active_streams[post_id]["status"] == "IDLE":
                 print("Stream has been cancelled during download.")
                 return
-            active_stream["status"] = "STREAMING"
-            active_stream["logs"] = ["Video diunduh dan diproses. Memulai FFmpeg..."]
+            active_streams[post_id]["status"] = "STREAMING"
+            active_streams[post_id]["logs"] = ["Video diunduh dan diproses. Memulai FFmpeg..."]
             
         # 3. Update status to LIVE in Firestore
         if db:
@@ -343,14 +376,15 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
         retry_count = 0
         backoff_delay = 5  # Mulai penundaan di 5 detik
         max_backoff = 60   # Maksimal penundaan 60 detik
+        next_live_triggered = False
         
         while True:
             # Check if cancelled before starting/retrying
             with stream_lock:
-                if active_stream["post_id"] != post_id or active_stream["status"] == "IDLE":
+                if post_id not in active_streams or active_streams[post_id]["status"] == "IDLE":
                     print("Stream has been cancelled or stopped.")
                     break
-                active_stream["status"] = "STREAMING"
+                active_streams[post_id]["status"] = "STREAMING"
             
             # Calculate remaining duration if not 24/7
             cmd_duration = []
@@ -364,12 +398,13 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                 remaining_sec = duration_sec - elapsed
                 if remaining_sec <= 0:
                     with stream_lock:
-                        active_stream["logs"].append("[SYSTEM] Durasi live streaming telah terpenuhi secara lengkap.")
+                        if post_id in active_streams:
+                            active_streams[post_id]["logs"].append("[SYSTEM] Durasi live streaming telah terpenuhi secara lengkap.")
                     break
                 cmd_duration = ["-t", str(int(remaining_sec))]
 
             # 4. Compile FFmpeg Command
-            inputs = ["-re", "-stream_loop", "-1", "-i", TEMP_VIDEO_PATH]
+            inputs = ["-re", "-stream_loop", "-1", "-i", temp_video_path]
             if combined_audio_path:
                 inputs.extend(["-stream_loop", "-1", "-i", combined_audio_path])
                 mapping = ["-map", "0:v:0", "-map", "1:a:0"]
@@ -396,9 +431,10 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                 
             # 5. Run FFmpeg subprocess
             with stream_lock:
-                active_stream["logs"].append(f"[SYSTEM] Memulai proses FFmpeg (Percobaan #{retry_count + 1})...")
-                active_stream["logs"].append(f"FFmpeg command: {' '.join(cmd)}")
-                print(f"Running FFmpeg command: {' '.join(cmd)}")
+                if post_id in active_streams:
+                    active_streams[post_id]["logs"].append(f"[SYSTEM] Memulai proses FFmpeg (Percobaan #{retry_count + 1})...")
+                    active_streams[post_id]["logs"].append(f"FFmpeg command: {' '.join(cmd)}")
+                    print(f"Running FFmpeg command: {' '.join(cmd)}")
 
             process = subprocess.Popen(
                 cmd,
@@ -408,55 +444,73 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
             )
             
             with stream_lock:
-                active_stream["process"] = process
+                if post_id in active_streams:
+                    active_streams[post_id]["process"] = process
                 
             # Read FFmpeg logs in real-time
             for line in iter(process.stdout.readline, ""):
+                # check if next live needs to be triggered (5 minutes = 300 seconds)
+                if duration != "24/7" and not next_live_triggered:
+                    try:
+                        duration_sec = int(duration) * 60
+                        elapsed = (datetime.now() - start_datetime).total_seconds()
+                        remaining_sec = duration_sec - elapsed
+                        if remaining_sec <= 300:
+                            next_live_triggered = True
+                            with stream_lock:
+                                if post_id in active_streams:
+                                    active_streams[post_id]["logs"].append("[SYSTEM] 5 menit sebelum selesai. Memicu Auto Create & Start Live 2...")
+                            trigger_next_live(post_id)
+                    except Exception as trigger_err:
+                        print(f"Error triggering next live: {trigger_err}")
+
                 with stream_lock:
-                    if active_stream["post_id"] != post_id or active_stream["status"] == "IDLE":
+                    if post_id not in active_streams or active_streams[post_id]["status"] == "IDLE":
                         break
-                    if len(active_stream["logs"]) > 45:
-                        active_stream["logs"].pop(0)
-                    active_stream["logs"].append(line.strip())
+                    if len(active_streams[post_id]["logs"]) > 45:
+                        active_streams[post_id]["logs"].pop(0)
+                    active_streams[post_id]["logs"].append(line.strip())
                     
             process.stdout.close()
             return_code = process.wait()
             
             # Check if cancelled during/after FFmpeg execution
             with stream_lock:
-                if active_stream["post_id"] != post_id or active_stream["status"] == "IDLE":
+                if post_id not in active_streams or active_streams[post_id]["status"] == "IDLE":
                     break
             
             # 6. Stream Finalization checking
             if return_code == 0:
                 with stream_lock:
-                    active_stream["status"] = "IDLE"
-                    active_stream["logs"].append("Streaming selesai secara normal.")
-                    if db:
-                        db.collection('posts').document(post_id).update({
-                            'status': 'Completed',
-                            'error_log': ''
-                        })
+                    if post_id in active_streams:
+                        active_streams[post_id]["status"] = "IDLE"
+                        active_streams[post_id]["logs"].append("Streaming selesai secara normal.")
+                        if db:
+                            db.collection('posts').document(post_id).update({
+                                'status': 'Completed',
+                                'error_log': ''
+                            })
                 break
             else:
                 retry_count += 1
                 with stream_lock:
-                    active_stream["logs"].append(f"[SYSTEM] WARNING: FFmpeg terhenti dengan kode {return_code} (Kemungkinan gangguan jaringan).")
-                    active_stream["logs"].append(f"[SYSTEM] Mencoba menghubungkan kembali dalam {backoff_delay} detik (Percobaan #{retry_count})...")
-                    if db:
-                        try:
-                            db.collection('posts').document(post_id).update({
-                                'error_log': f'Gangguan jaringan (Broken pipe). Reconnecting in {backoff_delay}s... (Retry #{retry_count})'
-                            })
-                        except:
-                            pass
+                    if post_id in active_streams:
+                        active_streams[post_id]["logs"].append(f"[SYSTEM] WARNING: FFmpeg terhenti dengan kode {return_code} (Kemungkinan gangguan jaringan).")
+                        active_streams[post_id]["logs"].append(f"[SYSTEM] Mencoba menghubungkan kembali dalam {backoff_delay} detik (Percobaan #{retry_count})...")
+                        if db:
+                            try:
+                                db.collection('posts').document(post_id).update({
+                                    'error_log': f'Gangguan jaringan (Broken pipe). Reconnecting in {backoff_delay}s... (Retry #{retry_count})'
+                                })
+                            except:
+                                pass
                 
                 # Interruptible sleep interval check
                 sleep_interval = 0.5
                 slept = 0.0
                 while slept < backoff_delay:
                     with stream_lock:
-                        if active_stream["post_id"] != post_id or active_stream["status"] == "IDLE":
+                        if post_id not in active_streams or active_streams[post_id]["status"] == "IDLE":
                             break
                     time.sleep(sleep_interval)
                     slept += sleep_interval
@@ -467,10 +521,10 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
     except Exception as e:
         print(f"Error in stream thread: {e}")
         with stream_lock:
-            if active_stream["post_id"] == post_id:
-                active_stream["status"] = "ERROR"
-                active_stream["error_message"] = str(e)
-                active_stream["logs"].append(f"EXCEPTION: {str(e)}")
+            if post_id in active_streams:
+                active_streams[post_id]["status"] = "ERROR"
+                active_streams[post_id]["error_message"] = str(e)
+                active_streams[post_id]["logs"].append(f"EXCEPTION: {str(e)}")
                 if db:
                     db.collection('posts').document(post_id).update({
                         'status': 'Failed',
@@ -480,20 +534,20 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
         # End YouTube broadcast if applicable
         end_youtube_broadcast(post_id)
 
-        # Delete temporary files
-        for p in [TEMP_VIDEO_PATH, "/tmp/stream_input_replaced.mp4", "/tmp/backsound_combined.mp3", "/tmp/image_stamp.png", "/tmp/stream_input_stamped.mp4"]:
+        # Delete temporary files belonging to this post_id ONLY
+        for p in [temp_video_path, temp_combined_audio_path, temp_standard_audio_path, temp_stamp_path, temp_stamped_video_path]:
             if os.path.exists(p):
                 try: os.remove(p)
                 except: pass
                 
         import glob
-        for p in glob.glob("/tmp/backsound_*.mp3"):
+        for p in glob.glob(f"/tmp/backsound_{post_id}_*.mp3"):
             try: os.remove(p)
             except: pass
             
         with stream_lock:
-            if active_stream["post_id"] == post_id:
-                active_stream["process"] = None
+            if post_id in active_streams:
+                active_streams[post_id]["process"] = None
 
 # =========================================================================
 # AUTO-RESUME LIVE STREAMS ON STARTUP
@@ -527,7 +581,6 @@ def check_and_resume_active_stream():
                     )
                     t.daemon = True
                     t.start()
-                    break
     except Exception as e:
         print(f"Error resuming active stream: {e}")
 
@@ -567,80 +620,43 @@ def dashboard():
                     <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center font-extrabold text-white text-lg">S</div>
                     <div>
                         <h1 class="text-lg font-extrabold tracking-tight">Snooplink Pro</h1>
-                        <p class="text-xs text-zinc-400 font-semibold">Live Streaming Engine</p>
+                        <p class="text-xs text-zinc-400 font-semibold">Multi-Stream Engine</p>
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
                     <span class="w-3 h-3 rounded-full bg-emerald-500 animate-ping"></span>
-                    <span class="text-sm font-bold text-emerald-400">Online & Active</span>
+                    <span class="text-sm font-bold text-emerald-400">Node Active</span>
                 </div>
             </div>
         </header>
 
         <main class="flex-grow max-w-6xl w-full mx-auto px-6 py-10 grid md:grid-cols-3 gap-8">
-            <!-- Left Column: Status Card -->
+            <!-- Left Column: Active Streams List -->
             <div class="md:col-span-1 flex flex-col gap-6">
                 <div class="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 glow flex flex-col">
-                    <h2 class="text-zinc-400 text-sm font-bold tracking-wider uppercase mb-4">Status Node</h2>
-                    <div class="flex items-center gap-4 mb-6" id="status-container">
-                        {% if state.status == 'STREAMING' %}
-                            <div class="w-5 h-5 rounded-full bg-red-500 glow-live"></div>
-                            <span class="text-2xl font-extrabold text-red-500">LIVE</span>
-                        {% elif state.status == 'DOWNLOADING' %}
-                            <div class="w-5 h-5 rounded-full bg-amber-500 animate-pulse"></div>
-                            <span class="text-2xl font-extrabold text-amber-500">DOWNLOADING</span>
-                        {% elif state.status == 'ERROR' %}
-                            <div class="w-5 h-5 rounded-full bg-rose-500"></div>
-                            <span class="text-2xl font-extrabold text-rose-500">ERROR</span>
-                        {% else %}
-                            <div class="w-5 h-5 rounded-full bg-zinc-600"></div>
-                            <span class="text-2xl font-extrabold text-zinc-400">IDLE</span>
-                        {% endif %}
-                    </div>
-
-                    <div id="details-container">
-                        {% if state.post_id %}
-                        <div class="border-t border-zinc-800 pt-4 flex flex-col gap-3 text-sm text-zinc-300">
-                            <div>
-                                <span class="text-zinc-500 block text-xs font-bold uppercase mb-1">Post ID</span>
-                                <span class="font-mono bg-zinc-950 px-2 py-1 rounded text-xs text-indigo-400">{{ state.post_id }}</span>
-                            </div>
-                            <div>
-                                <span class="text-zinc-500 block text-xs font-bold uppercase mb-1">Mulai Siaran</span>
-                                <span>{{ state.start_time }}</span>
-                            </div>
-                            <div>
-                                <span class="text-zinc-500 block text-xs font-bold uppercase mb-1">Durasi Siaran</span>
-                                <span class="bg-indigo-950/50 border border-indigo-900/50 px-2.5 py-0.5 rounded-full text-xs font-bold text-indigo-400">{{ state.duration }}</span>
-                            </div>
-                            
-                            <form action="/stop_stream" method="POST" class="mt-4">
-                                <input type="hidden" name="secret" value="{{ secret }}">
-                                <button type="submit" class="w-full bg-red-600 hover:bg-red-700 text-white font-extrabold py-3 px-4 rounded-xl transition shadow-lg shadow-red-900/20 active:scale-95">Hentikan Live Streaming</button>
-                            </form>
-                        </div>
-                        {% else %}
-                        <p class="text-sm text-zinc-500 italic mt-2">Menunggu pemicu jadwal posting dari Google Apps Script...</p>
-                        {% endif %}
+                    <h2 class="text-zinc-400 text-sm font-bold tracking-wider uppercase mb-4">Daftar Streaming Aktif</h2>
+                    <div id="streams-list" class="flex flex-col gap-3 max-h-[500px] overflow-y-auto pr-1">
+                        <div class="text-zinc-500 italic text-center py-6 text-sm">Loading active streams...</div>
                     </div>
                 </div>
             </div>
 
-            <!-- Right Column: Log Console -->
-            <div class="md:col-span-2 flex flex-col">
-                <div class="bg-zinc-950 border border-zinc-800 rounded-3xl p-6 flex-grow flex flex-col min-h-[450px]">
+            <!-- Right Column: Log Console & Selected Stream Details -->
+            <div class="md:col-span-2 flex flex-col gap-6">
+                <div class="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 glow flex flex-col" id="details-panel">
+                    <div class="text-center py-6 text-zinc-500">
+                        <h3 class="text-lg font-bold text-zinc-400 mb-2">Semua Sistem Siap</h3>
+                        <p class="text-sm italic">Menunggu pemicu jadwal posting dari Google Apps Script...</p>
+                    </div>
+                </div>
+                
+                <div class="bg-zinc-950 border border-zinc-800 rounded-3xl p-6 flex-grow flex flex-col min-h-[350px]">
                     <div class="flex items-center justify-between mb-4 border-b border-zinc-900 pb-3">
                         <h2 class="text-zinc-400 text-sm font-bold uppercase tracking-wider">Log Konsol FFmpeg</h2>
-                        <span class="text-xs bg-zinc-900 border border-zinc-800 px-3 py-1 rounded-full text-zinc-500 font-mono">Real-time</span>
+                        <span id="log-badge" class="text-xs bg-zinc-900 border border-zinc-800 px-3 py-1 rounded-full text-zinc-500 font-mono">Select a stream</span>
                     </div>
-                    <div id="logs-container" class="flex-grow bg-black/60 p-4 rounded-2xl border border-zinc-900 font-mono text-xs overflow-y-auto max-h-[350px] leading-relaxed text-zinc-400 flex flex-col gap-1.5">
-                        {% if state.logs %}
-                            {% for log in state.logs %}
-                                <div class="border-l-2 border-zinc-800 pl-2 py-0.5">{{ log }}</div>
-                            {% endfor %}
-                        {% else %}
-                            <div class="text-zinc-600 italic">Konsol kosong. Tidak ada aktivitas streaming aktif.</div>
-                        {% endif %}
+                    <div id="logs-container" class="flex-grow bg-black/60 p-4 rounded-2xl border border-zinc-900 font-mono text-xs overflow-y-auto max-h-[300px] leading-relaxed text-zinc-400 flex flex-col gap-1.5">
+                        <div class="text-zinc-600 italic">Pilih salah satu stream aktif untuk melihat log konsol secara real-time.</div>
                     </div>
                 </div>
             </div>
@@ -651,87 +667,150 @@ def dashboard():
         </footer>
 
         <script>
+            let selectedPostId = null;
+            const secret = "{{ secret }}";
+
+            async function stopStream(postId) {
+                if (!confirm(`Apakah Anda yakin ingin menghentikan live streaming ${postId}?`)) return;
+                try {
+                    const response = await fetch(`/stop_stream?postId=${postId}&secret=${secret}`, {
+                        method: 'POST'
+                    });
+                    const resJson = await response.json();
+                    if (resJson.status === 'success') {
+                        if (selectedPostId === postId) {
+                            selectedPostId = null;
+                        }
+                        updateStatus();
+                    } else {
+                        alert('Gagal menghentikan: ' + resJson.message);
+                    }
+                } catch (e) {
+                    alert('Error: ' + e.message);
+                }
+            }
+
             async function updateStatus() {
                 try {
                     const response = await fetch('/status?_t=' + Date.now());
                     if (!response.ok) return;
                     const data = await response.json();
                     
-                    // 1. Update Status Container HTML
-                    const statusContainer = document.getElementById('status-container');
-                    if (statusContainer) {
-                        let statusHtml = '';
-                        if (data.status === 'STREAMING') {
-                            statusHtml = '<div class="w-5 h-5 rounded-full bg-red-500 glow-live"></div><span class="text-2xl font-extrabold text-red-500">LIVE</span>';
-                        } else if (data.status === 'DOWNLOADING') {
-                            statusHtml = '<div class="w-5 h-5 rounded-full bg-amber-500 animate-pulse"></div><span class="text-2xl font-extrabold text-amber-500">DOWNLOADING</span>';
-                        } else if (data.status === 'ERROR') {
-                            statusHtml = '<div class="w-5 h-5 rounded-full bg-rose-500"></div><span class="text-2xl font-extrabold text-rose-500">ERROR</span>';
-                        } else {
-                            statusHtml = '<div class="w-5 h-5 rounded-full bg-zinc-600"></div><span class="text-2xl font-extrabold text-zinc-400">IDLE</span>';
+                    const streamsList = document.getElementById('streams-list');
+                    const detailsPanel = document.getElementById('details-panel');
+                    const logsContainer = document.getElementById('logs-container');
+                    const logBadge = document.getElementById('log-badge');
+
+                    const activeStreams = data.active_streams || {};
+                    const postIds = Object.keys(activeStreams);
+
+                    // Auto select first stream if nothing is selected or if selected is no longer active
+                    if (postIds.length > 0) {
+                        if (!selectedPostId || !activeStreams[selectedPostId]) {
+                            selectedPostId = postIds[0];
                         }
-                        if (statusContainer.innerHTML !== statusHtml) {
-                            statusContainer.innerHTML = statusHtml;
-                        }
+                    } else {
+                        selectedPostId = null;
                     }
-                    
-                    // 2. Update Details Container HTML
-                    const detailsContainer = document.getElementById('details-container');
-                    if (detailsContainer) {
-                        let detailsHtml = '';
-                        if (data.post_id) {
-                            detailsHtml = `
-                                <div class="border-t border-zinc-800 pt-4 flex flex-col gap-3 text-sm text-zinc-300">
+
+                    // 1. Render Streams List
+                    if (postIds.length === 0) {
+                        streamsList.innerHTML = '<div class="text-zinc-500 italic text-center py-6 text-sm">Tidak ada streaming aktif.</div>';
+                    } else {
+                        let listHtml = '';
+                        postIds.forEach(pid => {
+                            const s = activeStreams[pid];
+                            const isSelected = pid === selectedPostId;
+                            let statusColor = 'bg-zinc-600';
+                            let statusText = s.status;
+                            
+                            if (s.status === 'STREAMING') {
+                                statusColor = 'bg-red-500 glow-live';
+                            } else if (s.status === 'DOWNLOADING') {
+                                statusColor = 'bg-amber-500 animate-pulse';
+                            } else if (s.status === 'ERROR') {
+                                statusColor = 'bg-rose-500';
+                            }
+
+                            listHtml += `
+                                <div onclick="selectedPostId='${pid}'; updateStatus();" class="p-4 rounded-2xl border cursor-pointer transition ${isSelected ? 'bg-indigo-950/40 border-indigo-500' : 'bg-zinc-950/40 border-zinc-800 hover:border-zinc-700'}">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <span class="font-mono text-xs font-bold text-zinc-300 break-all select-none mr-2">${pid}</span>
+                                        <span class="w-2.5 h-2.5 rounded-full ${statusColor}"></span>
+                                    </div>
+                                    <div class="flex items-center justify-between text-xs text-zinc-400 mt-1">
+                                        <span>Duration: ${s.duration}</span>
+                                        <span class="text-indigo-400 font-semibold">${statusText}</span>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        streamsList.innerHTML = listHtml;
+                    }
+
+                    // 2. Render Details and Logs for Selected Stream
+                    if (selectedPostId && activeStreams[selectedPostId]) {
+                        const s = activeStreams[selectedPostId];
+                        logBadge.innerText = `Stream: ${selectedPostId}`;
+                        
+                        // Render details panel
+                        let detailsHtml = `
+                            <div class="flex flex-col gap-4">
+                                <div class="flex items-center justify-between">
+                                    <h3 class="text-lg font-bold text-zinc-100 flex items-center gap-2">
+                                        <span class="w-3 h-3 rounded-full ${s.status === 'STREAMING' ? 'bg-red-500 glow-live' : (s.status === 'DOWNLOADING' ? 'bg-amber-500' : 'bg-rose-500')}"></span>
+                                        Detail Siaran: ${s.status}
+                                    </h3>
+                                    <button onclick="stopStream('${selectedPostId}')" class="bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold py-2 px-4 rounded-xl transition active:scale-95">Hentikan Siaran</button>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4 text-sm border-t border-zinc-800 pt-4">
                                     <div>
                                         <span class="text-zinc-500 block text-xs font-bold uppercase mb-1">Post ID</span>
-                                        <span class="font-mono bg-zinc-950 px-2 py-1 rounded text-xs text-indigo-400">${data.post_id}</span>
+                                        <span class="font-mono bg-zinc-950 px-2 py-1 rounded text-xs text-indigo-400">${s.post_id}</span>
                                     </div>
                                     <div>
                                         <span class="text-zinc-500 block text-xs font-bold uppercase mb-1">Mulai Siaran</span>
-                                        <span>${data.start_time || '-'}</span>
+                                        <span class="text-zinc-300">${s.start_time || '-'}</span>
                                     </div>
                                     <div>
                                         <span class="text-zinc-500 block text-xs font-bold uppercase mb-1">Durasi Siaran</span>
-                                        <span class="bg-indigo-950/50 border border-indigo-900/50 px-2.5 py-0.5 rounded-full text-xs font-bold text-indigo-400">${data.duration || '24/7'}</span>
+                                        <span class="bg-indigo-950/50 border border-indigo-900/50 px-2.5 py-0.5 rounded-full text-xs font-bold text-indigo-400">${s.duration}</span>
                                     </div>
-                                    ${data.error_message ? `
                                     <div>
-                                        <span class="text-rose-500 block text-xs font-bold uppercase mb-1">Pesan Error</span>
-                                        <span class="text-rose-400 text-xs">${data.error_message}</span>
+                                        <span class="text-zinc-500 block text-xs font-bold uppercase mb-1">Tujuan RTMP</span>
+                                        <span class="font-mono text-zinc-400 text-xs truncate block" title="${s.rtmp_url}">${s.rtmp_url}</span>
                                     </div>
-                                    ` : ''}
-                                    <form action="/stop_stream" method="POST" class="mt-4">
-                                        <input type="hidden" name="secret" value="{{ secret }}">
-                                        <button type="submit" class="w-full bg-red-600 hover:bg-red-700 text-white font-extrabold py-3 px-4 rounded-xl transition shadow-lg shadow-red-900/20 active:scale-95">Hentikan Live Streaming</button>
-                                    </form>
                                 </div>
-                            `;
-                        } else {
-                            detailsHtml = '<p class="text-sm text-zinc-500 italic mt-2">Menunggu pemicu jadwal posting dari Google Apps Script...</p>';
-                        }
-                        // Simple check to prevent re-rendering forms while clicking stop
-                        if (detailsContainer.getAttribute('data-status') !== data.status || !detailsContainer.innerHTML.includes('Post ID') && data.post_id) {
-                            detailsContainer.innerHTML = detailsHtml;
-                            detailsContainer.setAttribute('data-status', data.status);
-                        }
-                    }
-                    
-                    // 3. Update Logs Container HTML
-                    const logsContainer = document.getElementById('logs-container');
-                    if (logsContainer) {
-                        if (data.logs && data.logs.length > 0) {
-                            const logsHtml = data.logs.map(log => `<div class="border-l-2 border-zinc-800 pl-2 py-0.5">${log}</div>`).join('');
-                            
-                            if (logsContainer.innerHTML !== logsHtml) {
-                                const wasScrolledToBottom = logsContainer.scrollHeight - logsContainer.clientHeight <= logsContainer.scrollTop + 40;
-                                logsContainer.innerHTML = logsHtml;
-                                if (wasScrolledToBottom) {
-                                    logsContainer.scrollTop = logsContainer.scrollHeight;
-                                }
+                                ${s.error_message ? `
+                                <div class="border-t border-zinc-800 pt-3">
+                                    <span class="text-rose-500 block text-xs font-bold uppercase mb-1">Pesan Error</span>
+                                    <span class="text-rose-400 text-xs font-mono">${s.error_message}</span>
+                                </div>
+                                ` : ''}
+                            </div>
+                        `;
+                        detailsPanel.innerHTML = detailsHtml;
+
+                        // Render logs
+                        if (s.logs && s.logs.length > 0) {
+                            const logsHtml = s.logs.map(log => `<div class="border-l-2 border-zinc-800 pl-2 py-0.5">${log}</div>`).join('');
+                            const wasScrolledToBottom = logsContainer.scrollHeight - logsContainer.clientHeight <= logsContainer.scrollTop + 45;
+                            logsContainer.innerHTML = logsHtml;
+                            if (wasScrolledToBottom) {
+                                logsContainer.scrollTop = logsContainer.scrollHeight;
                             }
                         } else {
-                            logsContainer.innerHTML = '<div class="text-zinc-600 italic">Konsol kosong. Tidak ada aktivitas streaming aktif.</div>';
+                            logsContainer.innerHTML = '<div class="text-zinc-600 italic">Konsol kosong. Tidak ada aktivitas log.</div>';
                         }
+                    } else {
+                        logBadge.innerText = 'Idle';
+                        detailsPanel.innerHTML = `
+                            <div class="text-center py-6 text-zinc-500">
+                                <h3 class="text-lg font-bold text-zinc-400 mb-2">Semua Sistem Siap</h3>
+                                <p class="text-sm italic">Menunggu pemicu jadwal posting dari Google Apps Script...</p>
+                            </div>
+                        `;
+                        logsContainer.innerHTML = '<div class="text-zinc-600 italic">Konsol kosong. Tidak ada aktivitas streaming aktif.</div>';
                     }
                     
                 } catch (e) {
@@ -741,24 +820,17 @@ def dashboard():
             
             // Poll status every 2 seconds
             setInterval(updateStatus, 2000);
-            
-            // Initial scroll to bottom
-            window.addEventListener('DOMContentLoaded', () => {
-                const logsContainer = document.getElementById('logs-container');
-                if (logsContainer) {
-                    logsContainer.scrollTop = logsContainer.scrollHeight;
-                }
-            });
+            updateStatus();
         </script>
     </body>
     </html>
     """
-    return render_template_string(html_template, state=active_stream, secret=HF_SECRET)
+    return render_template_string(html_template, secret=HF_SECRET)
 
 # API endpoint triggered by Google Apps Script
 @app.route("/start_stream", methods=["POST"])
 def start_stream():
-    global active_stream
+    global active_streams
     
     post_id = request.args.get("postId")
     secret = request.args.get("secret")
@@ -773,6 +845,13 @@ def start_stream():
         return jsonify({"status": "error", "message": "Database not initialized"}), 500
         
     try:
+        # Check if already running
+        with stream_lock:
+            if post_id in active_streams:
+                s = active_streams[post_id]
+                if s.get("status") in ["STREAMING", "DOWNLOADING"] and s.get("process") is not None:
+                    return jsonify({"status": "success", "message": "Streaming process already running for this postId"}), 200
+
         post_ref = db.collection('posts').document(post_id)
         post_doc = post_ref.get()
         
@@ -798,18 +877,6 @@ def start_stream():
         else:
             rtmp_url = f"rtmp://a.rtmp.youtube.com/live2/{stream_key}"
             
-        # Cancel current running stream if exists
-        with stream_lock:
-            if active_stream["process"]:
-                try:
-                    active_stream["process"].kill()
-                    print("Killed previous streaming process.")
-                except:
-                    pass
-                active_stream["status"] = "IDLE"
-                active_stream["process"] = None
-                active_stream["post_id"] = None
-                
         # Launch streaming in a background thread
         thread = threading.Thread(
             target=run_streaming_process,
@@ -826,49 +893,96 @@ def start_stream():
 # Stop Stream manually (triggered by Dashboard or API)
 @app.route("/stop_stream", methods=["POST"])
 def stop_stream():
-    global active_stream
+    global active_streams
     
     secret = request.args.get("secret") or request.form.get("secret")
+    post_id = request.args.get("postId") or request.form.get("postId")
     
     if secret != HF_SECRET:
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
         
+    stopped_posts = []
+    
     with stream_lock:
-        if active_stream["process"]:
-            try:
-                active_stream["process"].kill()
-                print("FFmpeg process killed manually.")
-            except:
-                pass
-                
-        post_id = active_stream["post_id"]
-        active_stream["status"] = "IDLE"
-        active_stream["process"] = None
-        active_stream["post_id"] = None
-        active_stream["logs"].append("Siaran dihentikan secara manual oleh pengguna.")
-        
-        if db and post_id:
-            try:
-                db.collection('posts').document(post_id).update({
-                    'status': 'Failed',
-                    'error_log': 'Siaran dihentikan secara manual oleh pengguna dari Dashboard.'
-                })
-            except:
-                pass
-                
-    return jsonify({"status": "success", "message": "Streaming stopped successfully"}), 200
+        targets = []
+        if post_id:
+            if post_id in active_streams:
+                targets.append(post_id)
+        else:
+            targets = list(active_streams.keys())
+            
+        for pid in targets:
+            s = active_streams[pid]
+            if s.get("process"):
+                try:
+                    s["process"].kill()
+                    print(f"FFmpeg process for post {pid} killed manually.")
+                except Exception as ex:
+                    print(f"Error killing process for post {pid}: {ex}")
+            
+            s["status"] = "IDLE"
+            s["process"] = None
+            s["logs"].append("Siaran dihentikan secara manual oleh pengguna.")
+            stopped_posts.append(pid)
+            
+            if db:
+                try:
+                    db.collection('posts').document(pid).update({
+                        'status': 'Failed',
+                        'error_log': 'Siaran dihentikan secara manual oleh pengguna dari Dashboard.'
+                    })
+                except Exception as ex:
+                    print(f"Error updating Firestore status to Failed for {pid}: {ex}")
+                    
+    return jsonify({"status": "success", "message": f"Streaming stopped successfully for: {stopped_posts}"}), 200
 
 # Fetch status endpoint
 @app.route("/status", methods=["GET"])
 def get_status():
     with stream_lock:
+        # Determine fallback values for backward compatibility
+        fallback_status = "IDLE"
+        fallback_post_id = None
+        fallback_start_time = None
+        fallback_duration = None
+        fallback_error_message = ""
+        fallback_logs = []
+        
+        # If there are active streams, pick the first one as fallback
+        active_list = [s for s in active_streams.values() if s.get("status") in ["STREAMING", "DOWNLOADING", "ERROR"]]
+        if active_list:
+            active_list.sort(key=lambda x: 0 if x.get("status") == "STREAMING" else (1 if x.get("status") == "DOWNLOADING" else 2))
+            first = active_list[0]
+            fallback_status = first.get("status", "IDLE")
+            fallback_post_id = first.get("post_id")
+            fallback_start_time = first.get("start_time")
+            fallback_duration = first.get("duration")
+            fallback_error_message = first.get("error_message", "")
+            fallback_logs = first.get("logs", [])
+        
+        # Serialize active_streams details without the Process object
+        serialized_streams = {}
+        for pid, s in active_streams.items():
+            serialized_streams[pid] = {
+                "status": s.get("status"),
+                "post_id": s.get("post_id"),
+                "video_url": s.get("video_url"),
+                "rtmp_url": s.get("rtmp_url"),
+                "duration": s.get("duration"),
+                "start_time": s.get("start_time"),
+                "error_message": s.get("error_message"),
+                "logs": s.get("logs")
+            }
+            
         resp = jsonify({
-            "status": active_stream["status"],
-            "post_id": active_stream["post_id"],
-            "start_time": active_stream["start_time"],
-            "duration": active_stream["duration"],
-            "error_message": active_stream["error_message"],
-            "logs": active_stream["logs"]
+            "status": fallback_status,
+            "post_id": fallback_post_id,
+            "postId": fallback_post_id, # for React compatibility
+            "start_time": fallback_start_time,
+            "duration": fallback_duration,
+            "error_message": fallback_error_message,
+            "logs": fallback_logs,
+            "active_streams": serialized_streams
         })
         resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         resp.headers["Pragma"] = "no-cache"

@@ -397,6 +397,17 @@ function executePost(post, postId) {
 
            // Simpan streamKey dan ytBroadcastId buatan API ke dokumen Firestore agar dibaca oleh Hugging Face
            updateFirestoreStreamKeyAndBroadcastId(postId, streamKey, ytLiveInfo ? ytLiveInfo.broadcastId : null);
+
+           // Aktifkan redirect di parent post jika ada
+           var parentPostId = post.fields?.parentPostId?.stringValue;
+           if (parentPostId && ytLiveInfo && ytLiveInfo.broadcastId) {
+             console.log("Memicu updateParentRedirect dari parent " + parentPostId + " ke Live 2: " + ytLiveInfo.broadcastId);
+             try {
+               updateParentRedirect(parentPostId, postId, ytLiveInfo.broadcastId);
+             } catch (redirectErr) {
+               console.log("Gagal mengaktifkan redirect di parent: " + redirectErr.message);
+             }
+           }
         }
       }
 
@@ -428,7 +439,10 @@ function executePost(post, postId) {
         console.log("Tidak ada server kustom terdaftar. Menggunakan server default: " + HF_SPACE_URL);
         selectedSpaceUrl = HF_SPACE_URL;
       } else {
-        // Cari server yang statusnya IDLE (siap digunakan)
+        // Cari server dengan beban terendah (jumlah siaran aktif paling sedikit) yang online
+        let bestNodeUrl = null;
+        let minActiveCount = Infinity;
+        
         for (let i = 0; i < userNodes.length; i++) {
           const node = userNodes[i];
           let nodeUrl = node.fields.url?.stringValue || "";
@@ -437,7 +451,7 @@ function executePost(post, postId) {
           if (!nodeUrl) continue;
           
           const serverName = node.fields.name?.stringValue || "Server " + (i + 1);
-          console.log("Memeriksa status server: " + serverName + " (" + nodeUrl + ")...");
+          console.log("Memeriksa status server untuk load balancing: " + serverName + " (" + nodeUrl + ")...");
           try {
             // Cek status via API dengan timeout cepat (5 detik)
             const checkRes = UrlFetchApp.fetch(nodeUrl + "/status?secret=" + HF_SECRET, {
@@ -449,12 +463,25 @@ function executePost(post, postId) {
             const checkText = checkRes.getContentText();
             const checkData = JSON.parse(checkText);
             
-            if (checkData.status === "IDLE") {
-              console.log("Server " + serverName + " KOSONG dan siap digunakan!");
-              selectedSpaceUrl = nodeUrl;
-              break; // Server ditemukan!
-            } else {
-              console.log("Server " + serverName + " sedang SIBUK (" + checkData.status + ")");
+            // Hitung jumlah stream aktif di server ini
+            let activeCount = 0;
+            if (checkData.active_streams) {
+              // Hitung yang statusnya STREAMING atau DOWNLOADING
+              for (let pid in checkData.active_streams) {
+                let sStatus = checkData.active_streams[pid].status;
+                if (sStatus === "STREAMING" || sStatus === "DOWNLOADING") {
+                  activeCount++;
+                }
+              }
+            } else if (checkData.status === "STREAMING" || checkData.status === "DOWNLOADING") {
+              activeCount = 1;
+            }
+            
+            console.log("Server " + serverName + " online dengan " + activeCount + " siaran aktif.");
+            
+            if (activeCount < minActiveCount) {
+              minActiveCount = activeCount;
+              bestNodeUrl = nodeUrl;
             }
           } catch (err) {
             console.log("Server " + serverName + " OFFLINE / Sedang tidur: " + err.message);
@@ -470,10 +497,15 @@ function executePost(post, postId) {
             }
           }
         }
+        
+        if (bestNodeUrl) {
+          selectedSpaceUrl = bestNodeUrl;
+          console.log("Memilih server dengan beban terendah: " + selectedSpaceUrl + " (Jumlah aktif: " + minActiveCount + ")");
+        }
       }
 
       if (!selectedSpaceUrl) {
-        throw new Error("Semua server streaming Anda sedang sibuk. Silakan tambahkan server baru di menu 'Streaming Server' atau tunggu siaran lain selesai.");
+        throw new Error("Semua server streaming Anda sedang offline atau tidur. Silakan bangunkan server Anda atau coba lagi beberapa saat lagi.");
       }
 
       // Simpan URL server yang dipilih ke dokumen postingan agar PWA bisa memantau dengan tepat
@@ -726,6 +758,28 @@ function updateFirestoreStreamKeyAndBroadcastId(docId, streamKey, broadcastId) {
     payload: JSON.stringify(payload),
     muteHttpExceptions: true
   });
+}
+
+// Mengaktifkan redirect dari parent post ke Live 2
+function updateParentRedirect(parentId, nextPostId, nextBroadcastId) {
+  const token = getAccessToken();
+  const url = `https://firestore.googleapis.com/v1/projects/${FB_CONFIG.project_id}/databases/(default)/documents/posts/${parentId}?updateMask.fieldPaths=redirectPostId&updateMask.fieldPaths=redirectYtBroadcastId&updateMask.fieldPaths=redirectUrl`;
+  
+  const payload = {
+    fields: {
+      redirectPostId: { stringValue: nextPostId },
+      redirectYtBroadcastId: { stringValue: nextBroadcastId },
+      redirectUrl: { stringValue: "https://www.youtube.com/watch?v=" + nextBroadcastId }
+    }
+  };
+
+  UrlFetchApp.fetch(url, {
+    method: "patch", contentType: "application/json",
+    headers: { "Authorization": "Bearer " + token },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+  console.log("Redirect aktif di parent post " + parentId + " -> " + nextPostId);
 }
 
 // ==========================================
@@ -999,6 +1053,78 @@ function doPost(e) {
       } else {
         throw new Error("Post tidak ditemukan.");
       }
+    }
+
+    // ACTION BARU: triggerNextLive (Memicu Auto Create & Start Live 2)
+    if (action === 'triggerNextLive') {
+      var parentPostId = e.parameter.parentPostId || (requestData && requestData.parentPostId);
+      console.log("Menerima triggerNextLive untuk parentPostId: " + parentPostId);
+      
+      var parentPost = getSingleFirestorePost(parentPostId);
+      if (!parentPost) {
+        throw new Error("Parent post tidak ditemukan.");
+      }
+      
+      var parentFields = parentPost.fields;
+      var postType = parentFields.postType?.stringValue || "post";
+      if (postType !== "live") {
+        throw new Error("Parent post bukan tipe live stream.");
+      }
+      
+      // Duplikasi metadata untuk Live 2
+      var nextFields = JSON.parse(JSON.stringify(parentFields));
+      
+      // Generate waktu saat ini (GMT+7) untuk jadwal Live 2
+      var now = new Date();
+      var gmt7DateString = Utilities.formatDate(now, "GMT+7", "yyyy-MM-dd");
+      var gmt7TimeString = Utilities.formatDate(now, "GMT+7", "HH:mm");
+      var currentMinuteString = gmt7DateString + " " + gmt7TimeString;
+      
+      nextFields.status = { stringValue: "Scheduled" };
+      nextFields.time = { stringValue: currentMinuteString };
+      nextFields.isRecurring = { booleanValue: false };
+      
+      // Kosongkan broadcast ID lama dan stream key agar generate yang baru untuk Live 2 (jika auto)
+      if (nextFields.ytBroadcastId) delete nextFields.ytBroadcastId;
+      if (nextFields.streamKeyMode?.stringValue === "auto" && nextFields.streamKey) {
+        delete nextFields.streamKey;
+      }
+      
+      // Simpan link parentPostId agar Live 2 bisa memicu redirect
+      nextFields.parentPostId = { stringValue: parentPostId };
+      
+      // Buat dokumen postingan Live 2 baru di Firestore
+      var nextPostId = createFirestoreDocument("posts", { fields: nextFields });
+      console.log("Berhasil membuat Live 2 dengan ID: " + nextPostId);
+      
+      // Dapatkan webAppUrl
+      var webAppUrl = getWebAppUrlFromFirestore();
+      if (!webAppUrl) {
+        webAppUrl = "https://script.google.com/macros/s/AKfycbwdxnTBbLtzqglMPRAx_whpyZt4_zmZNA77TsWI6AmJEociu0h_QhsSCTXinDua8HJleg/exec";
+      }
+      
+      // Picu eksekusi Live 2 secara asynchronous
+      var executeUrl = webAppUrl + "?action=executePostSingle&postId=" + nextPostId;
+      console.log("Memicu eksekusi Live 2 via URL: " + executeUrl);
+      
+      // Gunakan fetch non-blocking dengan timeout kecil agar tidak menunggu eksekusi selesai
+      try {
+        UrlFetchApp.fetch(executeUrl, {
+          method: "post",
+          muteHttpExceptions: true,
+          timeoutInSeconds: 1
+        });
+      } catch (fetchErr) {
+        // Abaikan timeout error karena kita memang ingin trigger asinkronus
+        console.log("Trigger eksekusi Live 2 dikirim (timeout expected): " + fetchErr.message);
+      }
+      
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        message: 'Auto-create & start Live 2 triggered',
+        parentPostId: parentPostId,
+        nextPostId: nextPostId
+      })).setMimeType(ContentService.MimeType.JSON);
     }
 
     // ACTION 1: Membuat sesi unggah resumable dengan mengizinkan origin browser (CORS Fix)
