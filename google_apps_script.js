@@ -525,6 +525,9 @@ function executePost(post, postId) {
             });
             
             const checkText = checkRes.getContentText();
+            if (checkText.trim().indexOf("<") === 0) {
+              throw new Error("Server mengembalikan HTML (kemungkinan sedang tidur/membangun)");
+            }
             const checkData = JSON.parse(checkText);
             
             // Hitung jumlah stream aktif di server ini
@@ -599,7 +602,18 @@ function executePost(post, postId) {
       const responseText = response.getContentText();
       console.log("Respon Server: " + responseText);
 
-      const resJson = JSON.parse(responseText);
+      // Cek apakah respon bertipe HTML (mungkin HF Space sedang tidur atau error 502/503/404)
+      if (responseText.trim().indexOf("<") === 0) {
+        throw new Error("Server streaming (Hugging Face) sedang tidur atau mengalami error. Silakan buka Space Anda secara manual di Hugging Face untuk membangunkannya.");
+      }
+
+      var resJson;
+      try {
+        resJson = JSON.parse(responseText);
+      } catch (parseErr) {
+        throw new Error("Respon server streaming tidak valid (bukan JSON): " + responseText.substring(0, 200));
+      }
+
       if (resJson.status === "error") {
         throw new Error("Gagal di Server Streaming: " + resJson.message);
       }
