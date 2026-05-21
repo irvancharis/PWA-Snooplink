@@ -245,6 +245,7 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
         backsound_urls = []
         image_stamp_url = None
         combined_audio_path = None
+        is_auto_loop = False
         
         # 1. Update status to Processing in Firestore and fetch configuration
         if db:
@@ -255,6 +256,7 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                 bitrate = post_data.get('bitrate', 'copy')
                 backsound_urls = post_data.get('backsoundUrls', [])
                 image_stamp_url = post_data.get('imageStampUrl', None)
+                is_auto_loop = post_data.get('isAutoLoop', False)
                 
             db.collection('posts').document(post_id).update({
                 'status': 'Processing',
@@ -450,7 +452,7 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
             # Read FFmpeg logs in real-time
             for line in iter(process.stdout.readline, ""):
                 # check if next live needs to be triggered (5 minutes = 300 seconds)
-                if duration != "24/7" and not next_live_triggered:
+                if duration != "24/7" and is_auto_loop and not next_live_triggered:
                     try:
                         duration_sec = int(duration) * 60
                         elapsed = (datetime.now() - start_datetime).total_seconds()

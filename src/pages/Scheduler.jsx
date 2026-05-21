@@ -42,6 +42,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
   const [streamKey, setStreamKey] = useState('');
   const [liveDuration, setLiveDuration] = useState('60'); // default 60 minutes
   const [isUnlimitedDuration, setIsUnlimitedDuration] = useState(true); // 24/7
+  const [isAutoLoop, setIsAutoLoop] = useState(false);
   const [bitrate, setBitrate] = useState('copy'); // 'copy', '2500k', '4000k', '6000k'
   const [tierLocation, setTierLocation] = useState('none'); // translation target
   const [linkUrl, setLinkUrl] = useState('');
@@ -128,6 +129,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
       setStreamKey(editPost.streamKey || '');
       setLiveDuration(editPost.liveDuration === '24/7' ? '60' : (editPost.liveDuration || '60'));
       setIsUnlimitedDuration(editPost.liveDuration === '24/7');
+      setIsAutoLoop(editPost.isAutoLoop || false);
       setBitrate(editPost.bitrate || 'copy');
       setTierLocation(editPost.tierLocation || 'none');
       setLinkUrl(editPost.linkUrl || '');
@@ -159,6 +161,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
       setStreamKey('');
       setLiveDuration('60');
       setIsUnlimitedDuration(true);
+      setIsAutoLoop(false);
       setBitrate('copy');
       setTierLocation('none');
       setLinkUrl('');
@@ -432,6 +435,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
           streamKeyMode,
           streamKey: streamKeyMode === 'manual' ? streamKey : '',
           liveDuration: isUnlimitedDuration ? '24/7' : liveDuration,
+          isAutoLoop,
           bitrate,
           imageStampUrl,
           randomVideo,
@@ -466,6 +470,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
           streamKeyMode,
           streamKey: streamKeyMode === 'manual' ? streamKey : '',
           liveDuration: isUnlimitedDuration ? '24/7' : liveDuration,
+          isAutoLoop,
           bitrate,
           imageStampUrl,
           randomVideo,
@@ -1221,32 +1226,120 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
                     </div>
                   )}
 
-                  <div className="input-group" style={{ background: '#f8fafc', padding: '1rem', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
-                    <label className="stat-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', margin: 0 }}>
-                      <input 
-                        type="checkbox" 
-                        checked={isUnlimitedDuration} 
-                        onChange={(e) => {
-                          setIsUnlimitedDuration(e.target.checked);
-                          if (e.target.checked) setLiveDuration('24/7');
-                        }}
-                        style={{ width: '16px', height: '16px' }}
-                      />
-                      <span style={{ fontWeight: 700 }}>Live 24/7 Non-stop (Looping Selamanya)</span>
-                    </label>
-                    
+                  <div className="input-group" style={{ background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                    <label className="stat-label" style={{ fontWeight: 800, margin: 0 }}>Mode Durasi & Loop Siaran</label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', marginTop: '0.4rem' }}>
+                      
+                      {/* Opsi 1: Satu Kali Siaran */}
+                      <label style={{ 
+                        display: 'flex', 
+                        alignItems: 'flex-start', 
+                        gap: '0.75rem', 
+                        cursor: 'pointer', 
+                        padding: '0.75rem 1rem', 
+                        background: '#fff', 
+                        border: `2px solid ${(!isUnlimitedDuration && !isAutoLoop) ? '#ef4444' : '#e2e8f0'}`, 
+                        borderRadius: '12px',
+                        transition: 'all 0.2s'
+                      }}>
+                        <input 
+                          type="radio" 
+                          name="loopMode"
+                          checked={!isUnlimitedDuration && !isAutoLoop} 
+                          onChange={() => {
+                            setIsUnlimitedDuration(false);
+                            setIsAutoLoop(false);
+                            if (liveDuration === '24/7') setLiveDuration('60');
+                          }}
+                          style={{ marginTop: '0.25rem', accentColor: '#ef4444' }}
+                        />
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                          <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-main)' }}>Satu Kali Siaran (Durasi Terbatas)</span>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: '1.3' }}>Siaran langsung akan berhenti dan selesai setelah durasi menit yang Anda tentukan habis.</span>
+                        </div>
+                      </label>
+
+                      {/* Opsi 2: Live 24/7 Non-stop (Single Stream) */}
+                      <label style={{ 
+                        display: 'flex', 
+                        alignItems: 'flex-start', 
+                        gap: '0.75rem', 
+                        cursor: 'pointer', 
+                        padding: '0.75rem 1rem', 
+                        background: '#fff', 
+                        border: `2px solid ${(isUnlimitedDuration && !isAutoLoop) ? '#ef4444' : '#e2e8f0'}`, 
+                        borderRadius: '12px',
+                        transition: 'all 0.2s'
+                      }}>
+                        <input 
+                          type="radio" 
+                          name="loopMode"
+                          checked={isUnlimitedDuration && !isAutoLoop} 
+                          onChange={() => {
+                            setIsUnlimitedDuration(true);
+                            setIsAutoLoop(false);
+                            setLiveDuration('24/7');
+                          }}
+                          style={{ marginTop: '0.25rem', accentColor: '#ef4444' }}
+                        />
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                          <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-main)' }}>Live 24/7 Non-stop (Satu Siaran Panjang)</span>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: '1.3' }}>Menyiarkan video secara berulang-ulang tanpa henti dalam satu sesi siaran langsung yang sama di YouTube.</span>
+                        </div>
+                      </label>
+
+                      {/* Opsi 3: Auto Loop / Rollover Berkelanjutan */}
+                      <label style={{ 
+                        display: 'flex', 
+                        alignItems: 'flex-start', 
+                        gap: '0.75rem', 
+                        cursor: 'pointer', 
+                        padding: '0.75rem 1rem', 
+                        background: '#fff', 
+                        border: `2px solid ${isAutoLoop ? '#ef4444' : '#e2e8f0'}`, 
+                        borderRadius: '12px',
+                        transition: 'all 0.2s'
+                      }}>
+                        <input 
+                          type="radio" 
+                          name="loopMode"
+                          checked={isAutoLoop} 
+                          onChange={() => {
+                            setIsUnlimitedDuration(false);
+                            setIsAutoLoop(true);
+                            if (liveDuration === '24/7') setLiveDuration('60');
+                          }}
+                          style={{ marginTop: '0.25rem', accentColor: '#ef4444' }}
+                        />
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                          <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            Auto Loop / Rollover Berkelanjutan <span style={{ background: '#fee2e2', color: '#ef4444', fontSize: '0.65rem', padding: '0.1rem 0.4rem', borderRadius: '6px', fontWeight: 800 }}>Rekomendasi</span>
+                          </span>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: '1.3' }}>Siaran berjalan selamanya dengan otomatis membuat Live 2, Live 3, dst. secara bersambung setiap X menit.</span>
+                        </div>
+                      </label>
+
+                    </div>
+
                     {!isUnlimitedDuration && (
-                      <div style={{ marginTop: '1rem' }}>
-                        <label className="stat-label">Atur Durasi Kustom (Menit)</label>
+                      <div style={{ marginTop: '0.8rem', borderTop: '1px solid #e2e8f0', paddingTop: '0.8rem' }}>
+                        <label className="stat-label" style={{ fontWeight: 700 }}>
+                          {isAutoLoop ? 'Durasi per Sesi Live (Menit)' : 'Atur Durasi Siaran (Menit)'}
+                        </label>
                         <input 
                           type="number" 
-                          min="1"
-                          placeholder="Misal: 60" 
-                          style={{ marginTop: '0.5rem', background: '#fff', width: '100%', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0.75rem 1rem' }}
+                          min="10"
+                          placeholder={isAutoLoop ? 'Rekomendasi: 60' : 'Misal: 60'} 
+                          style={{ marginTop: '0.4rem', background: '#fff', width: '100%', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0.75rem 1rem' }}
                           value={liveDuration === '24/7' ? '' : liveDuration}
                           onChange={(e) => setLiveDuration(e.target.value)}
                           required
                         />
+                        {isAutoLoop && (
+                          <p style={{ margin: '0.4rem 0 0 0', fontSize: '0.7rem', color: '#ef4444', fontWeight: 600, lineHeight: 1.4 }}>
+                            * Sistem otomatis membuat siaran baru (Live 2, dst) dan mengalihkan penonton 5 menit sebelum durasi sesi ini habis.
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
