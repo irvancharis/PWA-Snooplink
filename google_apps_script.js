@@ -272,7 +272,7 @@ function resolveRandomMedia(userId, category, count) {
 // KONSTANTA KEAMANAN TRIGGER HUGGING FACE
 // =========================================================================
 const HF_SECRET = "SnooplinkSuperSecret123"; // HARUS SAMA DENGAN DI SECRETS HUGGING FACE
-const HF_SPACE_URL = "https://irvancharis-live1.hf.space/start_stream";
+const HF_SPACE_URL = "https://irvancharis-live1.hf.space";
 
 // =========================================================================
 // MODIFIKASI FUNGSI UTAMA EXECUTEPOST (INTEGRASI LIVE & POSTING BIASA)
@@ -1469,7 +1469,7 @@ function checkFirestorePosts() {
 function testHuggingFaceDirectly() {
   console.log("--- MENGETES KONEKSI KE HUGGING FACE ---");
   try {
-    const url = `${HF_SPACE_URL}?postId=TEST_DUMMY_ID&secret=${HF_SECRET}`;
+    const url = `${HF_SPACE_URL}/start_stream?postId=TEST_DUMMY_ID&secret=${HF_SECRET}`;
     console.log("Mengirim request ke: " + url);
     const response = UrlFetchApp.fetch(url, {
       method: "POST",
