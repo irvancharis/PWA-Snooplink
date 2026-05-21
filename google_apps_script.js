@@ -332,10 +332,26 @@ function executePost(post, postId) {
     }
   }
 
+  // Dapatkan nomor iterasi loop saat ini (default ke 1 untuk root)
+  var loopIteration = 1;
+  if (post.fields.loopIteration) {
+    loopIteration = parseInt(post.fields.loopIteration.integerValue || post.fields.loopIteration.doubleValue || 1, 10);
+  }
+  console.log("Mengeksekusi siaran loop iterasi ke: " + loopIteration);
+
   // Spintax for YouTube Title
-  const titleTemplate = post.fields.ytTitleTemplate?.stringValue || post.fields.ytTitle?.stringValue || "";
+  var titleTemplate = post.fields.ytTitleTemplate?.stringValue || post.fields.ytTitle?.stringValue || "";
   if (titleTemplate) {
-    const spunTitle = parseSpintax(titleTemplate);
+    // Ganti placeholder {part} dengan loopIteration (case-insensitive)
+    titleTemplate = titleTemplate.replace(/\{part\}/gi, loopIteration.toString());
+    
+    var spunTitle = parseSpintax(titleTemplate);
+    
+    // Auto fallback: jika loop > 1 dan judul tidak mengandung nomor iterasi, tambahkan suffix otomatis
+    if (loopIteration > 1 && spunTitle.indexOf("#" + loopIteration) === -1 && spunTitle.indexOf("Part " + loopIteration) === -1) {
+      spunTitle = spunTitle + " #" + loopIteration;
+    }
+    
     updates.ytTitle = { stringValue: spunTitle };
     updates.ytTitleTemplate = { stringValue: titleTemplate };
     fieldPaths.push("ytTitle", "ytTitleTemplate");
@@ -346,9 +362,18 @@ function executePost(post, postId) {
   }
 
   // Spintax for Content / Description
-  const contentTemplate = post.fields.contentTemplate?.stringValue || post.fields.content?.stringValue || "";
+  var contentTemplate = post.fields.contentTemplate?.stringValue || post.fields.content?.stringValue || "";
   if (contentTemplate) {
-    const spunContent = parseSpintax(contentTemplate);
+    // Ganti placeholder {part} dengan loopIteration (case-insensitive)
+    contentTemplate = contentTemplate.replace(/\{part\}/gi, loopIteration.toString());
+    
+    var spunContent = parseSpintax(contentTemplate);
+    
+    // Auto fallback: tambahkan footnote unik di bagian bawah deskripsi
+    if (loopIteration > 1) {
+      spunContent = spunContent + "\n\n---\n*Siaran Loop Otomatis ke-" + loopIteration + "*";
+    }
+    
     updates.content = { stringValue: spunContent };
     updates.contentTemplate = { stringValue: contentTemplate };
     fieldPaths.push("content", "contentTemplate");
@@ -359,9 +384,12 @@ function executePost(post, postId) {
   }
 
   // Spintax for YouTube Tags
-  const tagsTemplate = post.fields.ytTagsTemplate?.stringValue || post.fields.ytTags?.stringValue || "";
+  var tagsTemplate = post.fields.ytTagsTemplate?.stringValue || post.fields.ytTags?.stringValue || "";
   if (tagsTemplate) {
-    const spunTags = parseSpintax(tagsTemplate);
+    // Ganti placeholder {part} dengan loopIteration (case-insensitive)
+    tagsTemplate = tagsTemplate.replace(/\{part\}/gi, loopIteration.toString());
+    
+    var spunTags = parseSpintax(tagsTemplate);
     updates.ytTags = { stringValue: spunTags };
     updates.ytTagsTemplate = { stringValue: tagsTemplate };
     fieldPaths.push("ytTags", "ytTagsTemplate");
@@ -1236,10 +1264,18 @@ function doPost(e) {
       var gmt7TimeString = Utilities.formatDate(now, "GMT+7", "HH:mm");
       var currentMinuteString = gmt7DateString + " " + gmt7TimeString;
       
-      nextFields.status = { stringValue: "Scheduled" };
+      nextFields.status = { stringValue: "Processing" };
       nextFields.time = { stringValue: currentMinuteString };
       nextFields.isRecurring = { booleanValue: false };
       nextFields.createdAt = { timestampValue: new Date().toISOString() };
+      
+      // Dapatkan nomor iterasi dari parent, default ke 1 jika belum ada
+      var parentIteration = 1;
+      if (parentFields.loopIteration) {
+        parentIteration = parseInt(parentFields.loopIteration.integerValue || parentFields.loopIteration.doubleValue || 1, 10);
+      }
+      var nextIteration = parentIteration + 1;
+      nextFields.loopIteration = { integerValue: nextIteration.toString() };
       
       // Kosongkan broadcast ID lama dan stream key agar generate yang baru untuk Live 2 (jika auto)
       if (nextFields.ytBroadcastId) delete nextFields.ytBroadcastId;

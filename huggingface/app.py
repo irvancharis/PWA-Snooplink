@@ -499,21 +499,6 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                 
             # Read FFmpeg logs in real-time
             for line in iter(process.stdout.readline, ""):
-                # check if next live needs to be triggered (5 minutes = 300 seconds)
-                if duration != "24/7" and is_auto_loop and not next_live_state["triggered"]:
-                    try:
-                        duration_sec = int(duration) * 60
-                        elapsed = (datetime.now() - start_datetime).total_seconds()
-                        remaining_sec = duration_sec - elapsed
-                        if remaining_sec <= 300:
-                            next_live_state["triggered"] = True
-                            with stream_lock:
-                                if post_id in active_streams:
-                                    active_streams[post_id]["logs"].append("[SYSTEM] 5 menit sebelum selesai. Memicu Auto Create & Start Live 2...")
-                            trigger_next_live(post_id)
-                    except Exception as trigger_err:
-                        print(f"Error triggering next live: {trigger_err}")
- 
                 with stream_lock:
                     if post_id not in active_streams or active_streams[post_id]["status"] == "IDLE":
                         break
