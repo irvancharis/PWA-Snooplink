@@ -354,10 +354,10 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                     'error_log': 'Hugging Face: Menempelkan gambar stamp...'
                 })
             
-            # Scale the stamp proportionally in pixel space and set SAR to 1 to ensure a perfect circle on square-pixel playback (like YouTube)
+            # Scale the stamp proportionally to exactly 12% of the video display height, pre-compensating for standard 16:9 playback stretch
             stamp_cmd = [
                 "ffmpeg", "-y", "-i", temp_video_path, "-loop", "1", "-i", temp_stamp_path,
-                "-filter_complex", "[1:v][0:v]scale2ref=w=rw*0.12:h=ow*ih/iw[stamp_raw][video];[stamp_raw]setsar=1[stamp];[video][stamp]overlay=main_w-overlay_w-10:main_h-overlay_h-10:shortest=1[outv]",
+                "-filter_complex", "[1:v][0:v]scale2ref=w=rw*0.12*(9/16)*iw/ih:h=rh*0.12[stamp_raw][video];[stamp_raw]setsar=1[stamp];[video][stamp]overlay=main_w-overlay_w-10:main_h-overlay_h-10:shortest=1[outv]",
                 "-map", "[outv]", "-map", "0:a?",
                 "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
                 "-c:a", "copy",
