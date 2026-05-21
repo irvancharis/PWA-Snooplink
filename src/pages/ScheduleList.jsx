@@ -152,7 +152,7 @@ const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia, user, onEdit }) =
               <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-color)', background: '#f8fafc' }}>
                 <th style={{ padding: '1.2rem 1.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Pratinjau</th>
                 <th style={{ padding: '1.2rem 1.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Platform & Akun</th>
-                <th style={{ padding: '1.2rem 1.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Isi Konten</th>
+                <th style={{ padding: '1.2rem 1.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Judul</th>
                 <th style={{ padding: '1.2rem 1.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Jadwal Tayang</th>
                 <th style={{ padding: '1.2rem 1.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Status</th>
                 <th style={{ padding: '1.2rem 1.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Aksi</th>
@@ -230,7 +230,7 @@ const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia, user, onEdit }) =
                     </td>
                     <td style={{ padding: '1.2rem 1.5rem' }}>
                       <div style={{ maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.9rem', color: 'var(--text-main)' }}>
-                        {post.content}
+                        {post.ytTitle || post.ytTitleTemplate || post.content}
                       </div>
                     </td>
                     <td style={{ padding: '1.2rem 1.5rem' }}>
