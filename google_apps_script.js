@@ -1083,12 +1083,20 @@ function doPost(e) {
       nextFields.status = { stringValue: "Scheduled" };
       nextFields.time = { stringValue: currentMinuteString };
       nextFields.isRecurring = { booleanValue: false };
+      nextFields.createdAt = { timestampValue: new Date().toISOString() };
       
       // Kosongkan broadcast ID lama dan stream key agar generate yang baru untuk Live 2 (jika auto)
       if (nextFields.ytBroadcastId) delete nextFields.ytBroadcastId;
       if (nextFields.streamKeyMode?.stringValue === "auto" && nextFields.streamKey) {
         delete nextFields.streamKey;
       }
+      
+      // Bersihkan field redirect, error, dan log lama agar Live 2 steril
+      if (nextFields.redirectPostId) delete nextFields.redirectPostId;
+      if (nextFields.redirectYtBroadcastId) delete nextFields.redirectYtBroadcastId;
+      if (nextFields.redirectUrl) delete nextFields.redirectUrl;
+      if (nextFields.error_log) delete nextFields.error_log;
+      if (nextFields.lastExecutedMinute) delete nextFields.lastExecutedMinute;
       
       // Simpan link parentPostId agar Live 2 bisa memicu redirect
       nextFields.parentPostId = { stringValue: parentPostId };
@@ -1217,6 +1225,11 @@ function doGet(e) {
     } catch (err) {
       return ContentService.createTextOutput("Error: " + err.toString());
     }
+  }
+  // Jalankan as doPost jika ada parameter action lain (misalnya triggerNextLive)
+  // guna mengantisipasi redirection library HTTP (seperti python requests) yang mengubah POST menjadi GET
+  if (action) {
+    return doPost(e);
   }
   return ContentService.createTextOutput("Snooplink Apps Script Active");
 }
