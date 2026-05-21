@@ -192,14 +192,20 @@ def trigger_next_live(parent_post_id):
     try:
         config_ref = db.collection('settings').document('config')
         config_doc = config_ref.get()
-        if not config_doc.exists:
-            print("Config settings not found in Firestore.")
-            return
-        config_data = config_doc.to_dict() or {}
-        web_app_url = config_data.get('webAppUrl')
-        if not web_app_url:
-            print("webAppUrl not configured in Firestore.")
-            return
+        
+        # Fallback to default GAS webAppUrl
+        web_app_url = "https://script.google.com/macros/s/AKfycbwdxnTBbLtzqglMPRAx_whpyZt4_zmZNA77TsWI6AmJEociu0h_QhsSCTXinDua8HJleg/exec"
+        
+        if config_doc.exists:
+            config_data = config_doc.to_dict() or {}
+            db_web_app_url = config_data.get('webAppUrl')
+            if db_web_app_url:
+                web_app_url = db_web_app_url
+                print(f"Loaded webAppUrl from Firestore: {web_app_url}")
+            else:
+                print(f"webAppUrl empty in settings/config, using fallback: {web_app_url}")
+        else:
+            print(f"settings/config doc not found in Firestore, using fallback: {web_app_url}")
         
         url = f"{web_app_url}?action=triggerNextLive&parentPostId={parent_post_id}"
         print(f"Triggering next live via GAS: {url}")
@@ -256,13 +262,20 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                 bitrate = post_data.get('bitrate', 'copy')
                 backsound_urls = post_data.get('backsoundUrls', [])
                 image_stamp_url = post_data.get('imageStampUrl', None)
-                is_auto_loop = post_data.get('isAutoLoop', False)
+                raw_auto_loop = post_data.get('isAutoLoop', False)
+                if isinstance(raw_auto_loop, str):
+                    is_auto_loop = raw_auto_loop.lower() in ['true', '1']
+                else:
+                    is_auto_loop = bool(raw_auto_loop)
                 
             db.collection('posts').document(post_id).update({
                 'status': 'Processing',
                 'error_log': 'Hugging Face: Mengunduh file media...'
             })
             
+        print(f"[STREAM RUNNER] Starting stream process for post_id: {post_id}")
+        print(f"[STREAM RUNNER] duration: {duration}, is_auto_loop: {is_auto_loop} (raw: {post_data.get('isAutoLoop') if db and post_doc.exists else 'N/A'})")
+        
         # 2. Download file locally to avoid FFmpeg seek/network problems on looped streams
         download_video(video_url, temp_video_path)
         
@@ -341,9 +354,10 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                     'error_log': 'Hugging Face: Menempelkan gambar stamp...'
                 })
             
+            # Note: Explicit setsar=1 added after scale2ref to prevent horizontally stretched (lonjong) stamp
             stamp_cmd = [
                 "ffmpeg", "-y", "-i", temp_video_path, "-loop", "1", "-i", temp_stamp_path,
-                "-filter_complex", "[1:v][0:v]scale2ref=w=rw*0.12:h=ow*ih/iw[stamp][video];[video][stamp]overlay=main_w-overlay_w-10:main_h-overlay_h-10:shortest=1[outv]",
+                "-filter_complex", "[1:v][0:v]scale2ref=w=rw*0.12:h=ow*ih/iw[stamp_raw][video];[stamp_raw]setsar=1[stamp];[video][stamp]overlay=main_w-overlay_w-10:main_h-overlay_h-10:shortest=1[outv]",
                 "-map", "[outv]", "-map", "0:a?",
                 "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
                 "-c:a", "copy",
@@ -378,7 +392,41 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
         retry_count = 0
         backoff_delay = 5  # Mulai penundaan di 5 detik
         max_backoff = 60   # Maksimal penundaan 60 detik
-        next_live_triggered = False
+        next_live_state = {"triggered": False}
+        
+        # Background Watchdog Thread to guarantee triggerNextLive runs exactly 5 minutes before stream duration ends,
+        # completely immune to FFmpeg log buffering or process stdout readline delays.
+        def watchdog_loop():
+            print(f"[WATCHDOG] Started background watchdog for stream: {post_id}. Target duration: {duration} mins, auto_loop: {is_auto_loop}")
+            while True:
+                # Terminate watchdog thread if the stream goes inactive
+                with stream_lock:
+                    if post_id not in active_streams or active_streams[post_id]["status"] not in ["STREAMING", "DOWNLOADING"]:
+                        print(f"[WATCHDOG] Stream {post_id} is no longer active. Exiting watchdog thread.")
+                        break
+                        
+                if duration != "24/7" and is_auto_loop and not next_live_state["triggered"]:
+                    try:
+                        duration_sec = int(duration) * 60
+                        elapsed = (datetime.now() - start_datetime).total_seconds()
+                        remaining_sec = duration_sec - elapsed
+                        
+                        # Trigger 5 minutes (300 seconds) prior to completion
+                        if remaining_sec <= 300:
+                            next_live_state["triggered"] = True
+                            with stream_lock:
+                                if post_id in active_streams:
+                                    msg = "[SYSTEM] [WATCHDOG] 5 menit sebelum selesai. Memicu Auto Create & Start Live 2..."
+                                    active_streams[post_id]["logs"].append(msg)
+                                    print(f"[WATCHDOG] Triggering next live for {post_id}. Remaining: {remaining_sec}s")
+                            trigger_next_live(post_id)
+                    except Exception as watch_err:
+                        print(f"[WATCHDOG] Error checking stream duration: {watch_err}")
+                
+                time.sleep(10)
+                
+        watchdog_thread = threading.Thread(target=watchdog_loop, daemon=True)
+        watchdog_thread.start()
         
         while True:
             # Check if cancelled before starting/retrying
@@ -404,7 +452,7 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                             active_streams[post_id]["logs"].append("[SYSTEM] Durasi live streaming telah terpenuhi secara lengkap.")
                     break
                 cmd_duration = ["-t", str(int(remaining_sec))]
-
+ 
             # 4. Compile FFmpeg Command
             inputs = ["-re", "-stream_loop", "-1", "-i", temp_video_path]
             if combined_audio_path:
@@ -419,7 +467,7 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
             buf_size = f"{int(bitrate.replace('k', '')) * 2}k"
             vcodec = ["-c:v", "libx264", "-b:v", bitrate, "-maxrate", bitrate, "-bufsize", buf_size, "-pix_fmt", "yuv420p", "-g", "60", "-preset", "ultrafast", "-tune", "zerolatency"]
             acodec = ["-c:a", "aac", "-b:a", "128k", "-ar", "44100"]
-
+ 
             cmd = ["ffmpeg", "-y"]
             cmd.extend(inputs)
             if cmd_duration:
@@ -437,7 +485,7 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                     active_streams[post_id]["logs"].append(f"[SYSTEM] Memulai proses FFmpeg (Percobaan #{retry_count + 1})...")
                     active_streams[post_id]["logs"].append(f"FFmpeg command: {' '.join(cmd)}")
                     print(f"Running FFmpeg command: {' '.join(cmd)}")
-
+ 
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -452,20 +500,20 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
             # Read FFmpeg logs in real-time
             for line in iter(process.stdout.readline, ""):
                 # check if next live needs to be triggered (5 minutes = 300 seconds)
-                if duration != "24/7" and is_auto_loop and not next_live_triggered:
+                if duration != "24/7" and is_auto_loop and not next_live_state["triggered"]:
                     try:
                         duration_sec = int(duration) * 60
                         elapsed = (datetime.now() - start_datetime).total_seconds()
                         remaining_sec = duration_sec - elapsed
                         if remaining_sec <= 300:
-                            next_live_triggered = True
+                            next_live_state["triggered"] = True
                             with stream_lock:
                                 if post_id in active_streams:
                                     active_streams[post_id]["logs"].append("[SYSTEM] 5 menit sebelum selesai. Memicu Auto Create & Start Live 2...")
                             trigger_next_live(post_id)
                     except Exception as trigger_err:
                         print(f"Error triggering next live: {trigger_err}")
-
+ 
                 with stream_lock:
                     if post_id not in active_streams or active_streams[post_id]["status"] == "IDLE":
                         break
