@@ -29,6 +29,13 @@ try:
     client_email = os.getenv("FIREBASE_CLIENT_EMAIL")
     private_key = os.getenv("FIREBASE_PRIVATE_KEY")
     
+    if project_id:
+        project_id = project_id.strip().strip('"').strip("'").strip()
+    if client_email:
+        client_email = client_email.strip().strip('"').strip("'").strip()
+    if private_key:
+        private_key = private_key.strip().strip('"').strip("'").strip()
+    
     missing = []
     if not project_id: missing.append("FIREBASE_PROJECT_ID")
     if not client_email: missing.append("FIREBASE_CLIENT_EMAIL")
