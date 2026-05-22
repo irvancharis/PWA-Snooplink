@@ -14,7 +14,8 @@ import {
   Volume2, 
   Calendar, 
   Clock, 
-  HelpCircle 
+  HelpCircle,
+  Copy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -287,8 +288,8 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
     setShowMediaModal(true);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (e, duplicateMode = false) => {
+    if (e && e.preventDefault) e.preventDefault();
     if (selectedAccountIds.length === 0) {
       setAlertModal({
         show: true,
@@ -398,7 +399,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
     }
 
     // Daily scheduling limit validation (non-recurring only)
-    if (!isRecurring && !editPost) {
+    if (!isRecurring && (!editPost || duplicateMode)) {
       const isSuperAdmin = user?.role === 'admin' || user?.email === 'irvancharis@gmail.com';
       const dailyLimit = user?.dailyPostLimit !== undefined ? user.dailyPostLimit : 5;
       const targetDate = date;
@@ -418,7 +419,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
 
     // Compile payload
     let payload;
-    if (editPost) {
+    if (editPost && !duplicateMode) {
       const activeAcc = accounts.find(a => selectedAccountIds.includes(a.id));
       payload = {
         content,
@@ -507,10 +508,13 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
     setUploadStage('Menyimpan jadwal ke database...');
 
     try {
-      if (editPost) {
+      if (editPost && !duplicateMode) {
         await onUpdatePost(editPost.id, payload);
       } else {
         await onSchedule(payload);
+        if (editPost && duplicateMode) {
+          onCancelEdit();
+        }
       }
     } catch (err) {
       console.error(err);
@@ -2452,29 +2456,58 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
               </button>
 
               {editPost && (
-                <button
-                  type="button"
-                  onClick={onCancelEdit}
-                  className="btn"
-                  style={{
-                    width: '100%',
-                    justifyContent: 'center',
-                    padding: '1.1rem',
-                    fontSize: '0.95rem',
-                    borderRadius: '16px',
-                    height: '52px',
-                    background: '#f1f5f9',
-                    border: '1px solid #e2e8f0',
-                    color: 'var(--text-muted)',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem'
-                  }}
-                >
-                  Batal Edit
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={(e) => handleSubmit(e, true)}
+                    className="btn"
+                    style={{
+                      width: '100%',
+                      justifyContent: 'center',
+                      padding: '1.1rem',
+                      fontSize: '0.95rem',
+                      borderRadius: '16px',
+                      height: '52px',
+                      background: '#ecfdf5',
+                      border: '1px solid #a7f3d0',
+                      color: '#065f46',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      boxShadow: '0 4px 6px -1px rgba(16, 185, 129, 0.1)'
+                    }}
+                    disabled={uploading}
+                  >
+                    <Copy size={18} />
+                    <span>Simpan Sebagai Duplikat</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onCancelEdit}
+                    className="btn"
+                    style={{
+                      width: '100%',
+                      justifyContent: 'center',
+                      padding: '1.1rem',
+                      fontSize: '0.95rem',
+                      borderRadius: '16px',
+                      height: '52px',
+                      background: '#f1f5f9',
+                      border: '1px solid #e2e8f0',
+                      color: 'var(--text-muted)',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }}
+                  >
+                    Batal Edit
+                  </button>
+                </>
               )}
             </div>
 
