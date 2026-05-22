@@ -159,9 +159,26 @@ def end_youtube_broadcast(post_id):
             print("YouTube refresh token (accessToken) is missing in social account.")
             return
             
-        # Refresh YouTube access token
-        client_id = "687270813688-8fsdi9hsnjrv8jvna051acs7ofiuk0uo.apps.googleusercontent.com"
-        client_secret = "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"
+        # Fetch YouTube credentials dynamically from Environment Variables or Firestore settings/config
+        client_id = os.getenv("YT_CLIENT_ID")
+        client_secret = os.getenv("YT_CLIENT_SECRET")
+        
+        if not client_id or not client_secret:
+            try:
+                config_ref = db.collection('settings').document('config')
+                config_doc = config_ref.get()
+                if config_doc.exists:
+                    config_data = config_doc.to_dict() or {}
+                    if not client_id:
+                        client_id = config_data.get('ytClientId')
+                    if not client_secret:
+                        client_secret = config_data.get('ytClientSecret')
+            except Exception as fe:
+                print(f"[SYSTEM] Gagal membaca kredensial YT dari Firestore: {fe}")
+                
+        if not client_id or not client_secret:
+            print("[SYSTEM] YouTube client_id atau client_secret tidak terkonfigurasi di env/Firestore!")
+            return
         
         token_url = "https://oauth2.googleapis.com/token"
         token_data = {
