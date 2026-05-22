@@ -536,94 +536,142 @@ function executePost(post, postId) {
       }
 
       // 1. Dapatkan daftar node streaming milik user dari Firestore untuk penyeimbangan beban otomatis
-      const userId = post.fields.userId?.stringValue;
-      console.log("Mencari server streaming untuk user ID: " + userId);
+      let selectedSpaceUrl = account.fields.liveServerUrl?.stringValue || null;
       
-      let selectedSpaceUrl = null;
-      let allNodes = [];
-      try {
-        allNodes = getFirestoreData("streaming_nodes");
-      } catch (e) {
-        console.log("Gagal membaca koleksi streaming_nodes: " + e.message);
-      }
-
-      // Filter node berdasarkan userId pembuat postingan
-      const userNodes = allNodes.filter(function(node) {
-        return node.fields && node.fields.userId?.stringValue === userId;
-      });
-
-      console.log("Ditemukan " + userNodes.length + " server terdaftar.");
-
-      if (userNodes.length === 0) {
-        // Fallback ke server tunggal bawaan jika user belum menambahkan server kustom
-        console.log("Tidak ada server kustom terdaftar. Menggunakan server default: " + HF_SPACE_URL);
-        selectedSpaceUrl = HF_SPACE_URL;
+      if (selectedSpaceUrl) {
+        selectedSpaceUrl = selectedSpaceUrl.replace(/\/$/, "");
+        console.log("Menggunakan server khusus terikat dari akun: " + selectedSpaceUrl);
+        // Ping ringan untuk membangunkan jika sedang tidur
+        try {
+          UrlFetchApp.fetch(selectedSpaceUrl + "/status?secret=" + HF_SECRET, {
+            method: "GET",
+            muteHttpExceptions: true,
+            timeoutInSeconds: 2
+          });
+        } catch (pingErr) {
+          // Abaikan
+        }
       } else {
-        // Cari server dengan beban terendah (jumlah siaran aktif paling sedikit) yang online
-        let bestNodeUrl = null;
-        let minActiveCount = Infinity;
+        const userId = post.fields.userId?.stringValue;
+        console.log("Mencari server streaming untuk user ID: " + userId);
         
-        for (let i = 0; i < userNodes.length; i++) {
-          const node = userNodes[i];
-          let nodeUrl = node.fields.url?.stringValue || "";
-          nodeUrl = nodeUrl.replace(/\/$/, ""); // bersihkan trailing slash
-          
-          if (!nodeUrl) continue;
-          
-          const serverName = node.fields.name?.stringValue || "Server " + (i + 1);
-          console.log("Memeriksa status server untuk load balancing: " + serverName + " (" + nodeUrl + ")...");
+        let allNodes = [];
+        try {
+          allNodes = getFirestoreData("streaming_nodes");
+        } catch (e) {
+          console.log("Gagal membaca koleksi streaming_nodes: " + e.message);
+        }
+  
+        // Filter node berdasarkan userId pembuat postingan
+        const userNodes = allNodes.filter(function(node) {
+          return node.fields && node.fields.userId?.stringValue === userId;
+        });
+  
+        console.log("Ditemukan " + userNodes.length + " server terdaftar.");
+  
+        // Check if there is a server specifically bound to the post's accountId
+        const targetAccountId = post.fields.accountId?.stringValue;
+        let accountMatchedNode = null;
+        if (targetAccountId) {
+          accountMatchedNode = userNodes.find(function(node) {
+            return node.fields && node.fields.accountId?.stringValue === targetAccountId;
+          });
+        }
+  
+        if (accountMatchedNode) {
+          let nodeUrl = accountMatchedNode.fields.url?.stringValue || "";
+          nodeUrl = nodeUrl.replace(/\/$/, "");
+          selectedSpaceUrl = nodeUrl;
+          console.log("Menggunakan server khusus terikat akun: " + selectedSpaceUrl);
+          // Ping ringan untuk membangunkan jika sedang tidur
           try {
-            // Cek status via API dengan timeout cepat (5 detik)
-            const checkRes = UrlFetchApp.fetch(nodeUrl + "/status?secret=" + HF_SECRET, {
+            UrlFetchApp.fetch(nodeUrl + "/status?secret=" + HF_SECRET, {
               method: "GET",
               muteHttpExceptions: true,
-              timeoutInSeconds: 5
+              timeoutInSeconds: 2
             });
+          } catch (pingErr) {
+            // Abaikan
+          }
+        } else if (userNodes.length === 0) {
+          // Fallback ke server tunggal bawaan jika user belum menambahkan server kustom
+          console.log("Tidak ada server kustom terdaftar. Menggunakan server default: " + HF_SPACE_URL);
+          selectedSpaceUrl = HF_SPACE_URL;
+        } else {
+          // Filter servers that are NOT bound to any other account to avoid cross-channel streaming conflicts
+          const generalNodes = userNodes.filter(function(node) {
+            return !node.fields || !node.fields.accountId || !node.fields.accountId.stringValue;
+          });
+          
+          const nodesToScan = generalNodes.length > 0 ? generalNodes : userNodes;
+          console.log("Melakukan load balancing terhadap " + nodesToScan.length + " server.");
+  
+          // Cari server dengan beban terendah (jumlah siaran aktif paling sedikit) yang online
+          let bestNodeUrl = null;
+          let minActiveCount = Infinity;
+          
+          for (let i = 0; i < nodesToScan.length; i++) {
+            const node = nodesToScan[i];
+            let nodeUrl = node.fields.url?.stringValue || "";
+            nodeUrl = nodeUrl.replace(/\/$/, ""); // bersihkan trailing slash
             
-            const checkText = checkRes.getContentText();
-            if (checkText.trim().indexOf("<") === 0) {
-              throw new Error("Server mengembalikan HTML (kemungkinan sedang tidur/membangun)");
-            }
-            const checkData = JSON.parse(checkText);
+            if (!nodeUrl) continue;
             
-            // Hitung jumlah stream aktif di server ini
-            let activeCount = 0;
-            if (checkData.active_streams) {
-              // Hitung yang statusnya STREAMING atau DOWNLOADING
-              for (let pid in checkData.active_streams) {
-                let sStatus = checkData.active_streams[pid].status;
-                if (sStatus === "STREAMING" || sStatus === "DOWNLOADING") {
-                  activeCount++;
-                }
-              }
-            } else if (checkData.status === "STREAMING" || checkData.status === "DOWNLOADING") {
-              activeCount = 1;
-            }
-            
-            console.log("Server " + serverName + " online dengan " + activeCount + " siaran aktif.");
-            
-            if (activeCount < minActiveCount) {
-              minActiveCount = activeCount;
-              bestNodeUrl = nodeUrl;
-            }
-          } catch (err) {
-            console.log("Server " + serverName + " OFFLINE / Sedang tidur: " + err.message);
-            // Kirim ping ringan tanpa menunggu untuk membangunkan container Hugging Face jika sedang tertidur
+            const serverName = node.fields.name?.stringValue || "Server " + (i + 1);
+            console.log("Memeriksa status server untuk load balancing: " + serverName + " (" + nodeUrl + ")...");
             try {
-              UrlFetchApp.fetch(nodeUrl + "/status?secret=" + HF_SECRET, {
+              // Cek status via API dengan timeout cepat (5 detik)
+              const checkRes = UrlFetchApp.fetch(nodeUrl + "/status?secret=" + HF_SECRET, {
                 method: "GET",
                 muteHttpExceptions: true,
-                timeoutInSeconds: 1
+                timeoutInSeconds: 5
               });
-            } catch (pingErr) {
-              // Abaikan timeout/error ping
+              
+              const checkText = checkRes.getContentText();
+              if (checkText.trim().indexOf("<") === 0) {
+                throw new Error("Server mengembalikan HTML (kemungkinan sedang tidur/membangun)");
+              }
+              const checkData = JSON.parse(checkText);
+              
+              // Hitung jumlah stream aktif di server ini
+              let activeCount = 0;
+              if (checkData.active_streams) {
+                // Hitung yang statusnya STREAMING atau DOWNLOADING
+                for (let pid in checkData.active_streams) {
+                  let sStatus = checkData.active_streams[pid].status;
+                  if (sStatus === "STREAMING" || sStatus === "DOWNLOADING") {
+                    activeCount++;
+                  }
+                }
+              } else if (checkData.status === "STREAMING" || checkData.status === "DOWNLOADING") {
+                activeCount = 1;
+              }
+              
+              console.log("Server " + serverName + " online dengan " + activeCount + " siaran aktif.");
+              
+              if (activeCount < minActiveCount) {
+                minActiveCount = activeCount;
+                bestNodeUrl = nodeUrl;
+              }
+            } catch (err) {
+              console.log("Server " + serverName + " OFFLINE / Sedang tidur: " + err.message);
+              // Kirim ping ringan tanpa menunggu untuk membangunkan container Hugging Face jika sedang tertidur
+              try {
+                UrlFetchApp.fetch(nodeUrl + "/status?secret=" + HF_SECRET, {
+                  method: "GET",
+                  muteHttpExceptions: true,
+                  timeoutInSeconds: 1
+                });
+              } catch (pingErr) {
+                // Abaikan timeout/error ping
+              }
             }
           }
-        }
-        
-        if (bestNodeUrl) {
-          selectedSpaceUrl = bestNodeUrl;
-          console.log("Memilih server dengan beban terendah: " + selectedSpaceUrl + " (Jumlah aktif: " + minActiveCount + ")");
+          
+          if (bestNodeUrl) {
+            selectedSpaceUrl = bestNodeUrl;
+            console.log("Memilih server dengan beban terendah: " + selectedSpaceUrl + " (Jumlah aktif: " + minActiveCount + ")");
+          }
         }
       }
 
@@ -635,11 +683,9 @@ function executePost(post, postId) {
       try {
         const cleanNodeUrl = selectedSpaceUrl.replace(/\/$/, "");
         const updates = {
-          fields: {
-            streamingNodeUrl: { stringValue: cleanNodeUrl }
-          }
+          streamingNodeUrl: { stringValue: cleanNodeUrl }
         };
-        updateFirestoreFields(postId, updates, "streamingNodeUrl");
+        updateFirestoreFields(postId, updates, ["streamingNodeUrl"]);
       } catch (e) {
         console.log("Gagal menyimpan streamingNodeUrl ke dokumen postingan: " + e.message);
       }
@@ -989,6 +1035,71 @@ function updateParentRedirect(parentId, nextPostId, nextBroadcastId) {
     muteHttpExceptions: true
   });
   console.log("Redirect aktif di parent post " + parentId + " -> " + nextPostId);
+}
+
+// Memperbarui metadata (Judul, Deskripsi, Tag) dari siaran langsung aktif di YouTube via API
+function updateYouTubeLiveMetadata(broadcastId, token, title, description, tagsStr, ytAlteredContent) {
+  console.log("Memulai pembaruan metadata YouTube untuk video ID: " + broadcastId);
+  var videoGetUrl = "https://www.googleapis.com/youtube/v3/videos?part=snippet,status&id=" + broadcastId;
+  
+  // Ambil data video/broadcast lama terlebih dahulu untuk menjaga kelengkapan data
+  var videoGetRes = UrlFetchApp.fetch(videoGetUrl, {
+    method: "GET",
+    headers: { Authorization: "Bearer " + token },
+    muteHttpExceptions: true
+  });
+  
+  var videoGetData = JSON.parse(videoGetRes.getContentText());
+  if (videoGetData && videoGetData.items && videoGetData.items.length > 0) {
+    var videoItem = videoGetData.items[0];
+    var originalSnippet = videoItem.snippet;
+    var originalStatus = videoItem.status || {};
+    
+    var cleanSnippet = {
+      title: title,
+      description: description || "",
+      categoryId: originalSnippet.categoryId || "22"
+    };
+    if (originalSnippet.defaultLanguage) cleanSnippet.defaultLanguage = originalSnippet.defaultLanguage;
+    if (originalSnippet.defaultAudioLanguage) cleanSnippet.defaultAudioLanguage = originalSnippet.defaultAudioLanguage;
+    
+    if (tagsStr) {
+      cleanSnippet.tags = tagsStr.split(",").map(function (t) { return t.trim(); }).filter(function (t) { return t.length > 0; });
+    }
+    
+    var cleanStatus = {
+      privacyStatus: originalStatus.privacyStatus || "public",
+      selfDeclaredMadeForKids: originalStatus.selfDeclaredMadeForKids !== undefined ? originalStatus.selfDeclaredMadeForKids : false,
+      containsSyntheticMedia: (ytAlteredContent !== "no")
+    };
+    if (originalStatus.license) cleanStatus.license = originalStatus.license;
+    if (originalStatus.embeddable !== undefined) cleanStatus.embeddable = originalStatus.embeddable;
+    if (originalStatus.publicStatsViewable !== undefined) cleanStatus.publicStatsViewable = originalStatus.publicStatsViewable;
+
+    var videoUpdatePayload = {
+      id: broadcastId,
+      snippet: cleanSnippet,
+      status: cleanStatus
+    };
+    
+    var videoUpdateUrl = "https://www.googleapis.com/youtube/v3/videos?part=snippet,status";
+    var videoUpdateRes = UrlFetchApp.fetch(videoUpdateUrl, {
+      method: "PUT",
+      contentType: "application/json",
+      headers: { Authorization: "Bearer " + token },
+      payload: JSON.stringify(videoUpdatePayload),
+      muteHttpExceptions: true
+    });
+    
+    var videoUpdateData = JSON.parse(videoUpdateRes.getContentText());
+    if (videoUpdateData.error) {
+      throw new Error("Gagal update video YouTube: " + videoUpdateData.error.message);
+    }
+    console.log("YouTube Video Live Metadata Update Sukses: " + videoUpdateRes.getContentText());
+    return true;
+  } else {
+    throw new Error("Video tidak ditemukan di YouTube.");
+  }
 }
 
 // ==========================================
@@ -1364,6 +1475,118 @@ function doPost(e) {
         message: 'Auto-create & start Live 2 triggered',
         parentPostId: parentPostId,
         nextPostId: nextPostId
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ACTION BARU: updateLiveMetadata (Mengubah judul, deskripsi, tag live stream secara dinamis saat sedang berjalan)
+    if (action === 'updateLiveMetadata') {
+      var postId = e.parameter.postId || (requestData && requestData.postId);
+      console.log("Menerima updateLiveMetadata untuk postId: " + postId);
+      
+      var post = getSingleFirestorePost(postId);
+      if (!post) {
+        throw new Error("Post tidak ditemukan.");
+      }
+      
+      var fields = post.fields;
+      var postType = fields.postType?.stringValue || "post";
+      if (postType !== "live") {
+        throw new Error("Post bukan tipe live stream.");
+      }
+      
+      var broadcastId = fields.ytBroadcastId?.stringValue;
+      if (!broadcastId) {
+        throw new Error("Broadcast ID YouTube tidak ditemukan untuk post ini.");
+      }
+      
+      var accountId = fields.accountId?.stringValue;
+      var account = getFirestoreDocument("social_accounts", accountId);
+      var refreshToken = account.fields.accessToken?.stringValue;
+      if (!refreshToken) {
+        throw new Error("Refresh token YouTube tidak ditemukan.");
+      }
+      
+      var freshToken = getFreshYouTubeToken(refreshToken);
+      
+      // Hitung dan update nomor iterasi berikutnya
+      var currentIteration = 1;
+      if (fields.loopIteration) {
+        currentIteration = parseInt(fields.loopIteration.integerValue || fields.loopIteration.doubleValue || 1, 10);
+      }
+      var nextIteration = currentIteration + 1;
+      
+      var updates = {};
+      var fieldPaths = [];
+      
+      // Resolve Title Template
+      var titleTemplate = fields.ytTitleTemplate?.stringValue || fields.ytTitle?.stringValue || "";
+      var spunTitle = "";
+      if (titleTemplate) {
+        var titleLines = titleTemplate.split(/\r?\n/).map(function(l) { return l.trim(); }).filter(function(l) { return l.length > 0; });
+        var selectedTitle = titleTemplate;
+        if (titleLines.length > 1) {
+          selectedTitle = titleLines[Math.floor(Math.random() * titleLines.length)];
+        }
+        selectedTitle = selectedTitle.replace(/\{part\}/gi, nextIteration.toString());
+        spunTitle = parseSpintax(selectedTitle);
+        if (nextIteration > 1 && spunTitle.indexOf("#" + nextIteration) === -1 && spunTitle.indexOf("Part " + nextIteration) === -1) {
+          spunTitle = spunTitle + " #" + nextIteration;
+        }
+        updates.ytTitle = { stringValue: spunTitle };
+        fieldPaths.push("ytTitle");
+      }
+      
+      // Resolve Description Template
+      var contentTemplate = fields.contentTemplate?.stringValue || fields.content?.stringValue || "";
+      var spunContent = "";
+      if (contentTemplate) {
+        var replacedContent = contentTemplate.replace(/\{part\}/gi, nextIteration.toString());
+        var paragraphs = replacedContent.split(/\n\s*\n/).map(function(p) { return p.trim(); }).filter(function(p) { return p.length > 0; });
+        var shuffledContent = replacedContent;
+        if (paragraphs.length > 1) {
+          paragraphs = shuffleArray(paragraphs);
+          shuffledContent = paragraphs.join("\n\n");
+        }
+        spunContent = parseSpintax(shuffledContent);
+        if (nextIteration > 1) {
+          spunContent = spunContent + "\n\n---\n*Siaran Loop Otomatis ke-" + nextIteration + "*";
+        }
+        updates.content = { stringValue: spunContent };
+        fieldPaths.push("content");
+      }
+      
+      // Resolve Tags Template
+      var tagsTemplate = fields.ytTagsTemplate?.stringValue || fields.ytTags?.stringValue || "";
+      var spunTags = "";
+      if (tagsTemplate) {
+        var replacedTags = tagsTemplate.replace(/\{part\}/gi, nextIteration.toString());
+        spunTags = parseSpintax(replacedTags);
+        var tagsList = spunTags.split(",").map(function(t) { return t.trim(); }).filter(function(t) { return t.length > 0; });
+        if (tagsList.length > 1) {
+          tagsList = shuffleArray(tagsList);
+          spunTags = tagsList.join(", ");
+        }
+        updates.ytTags = { stringValue: spunTags };
+        fieldPaths.push("ytTags");
+      }
+      
+      // Update loop iteration
+      updates.loopIteration = { integerValue: nextIteration.toString() };
+      fieldPaths.push("loopIteration");
+      
+      // Update Firestore
+      updateFirestoreFields(postId, updates, fieldPaths);
+      
+      // Panggil API YouTube untuk update live metadata
+      var ytAlteredContent = fields.ytAlteredContent?.stringValue || "yes";
+      updateYouTubeLiveMetadata(broadcastId, freshToken, spunTitle, spunContent, spunTags, ytAlteredContent);
+      
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        message: 'Live metadata updated successfully',
+        postId: postId,
+        nextIteration: nextIteration,
+        newTitle: spunTitle
       })).setMimeType(ContentService.MimeType.JSON);
     }
 

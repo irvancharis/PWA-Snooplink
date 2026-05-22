@@ -13,7 +13,7 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
   const [isFbLoading, setIsFbLoading] = useState(false);
   const [manualMode, setManualMode] = useState(false);
   const [formData, setFormData] = useState({
-    name: '', platform: 'facebook', handle: '', pageId: '', accessToken: '', appId: '', apiSecret: ''
+    name: '', platform: 'facebook', handle: '', pageId: '', accessToken: '', appId: '', apiSecret: '', liveServerUrl: ''
   });
   const [alertModal, setAlertModal] = useState({ show: false, title: '', message: '' });
 
@@ -47,7 +47,7 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
     setShowModal(false);
     setIsEditing(false);
     setManualMode(false);
-    setFormData({ name: '', platform: 'facebook', handle: '', pageId: '', accessToken: '', appId: '', apiSecret: '' });
+    setFormData({ name: '', platform: 'facebook', handle: '', pageId: '', accessToken: '', appId: '', apiSecret: '', liveServerUrl: '' });
   };
 
   const handleOpenAddModal = () => {
@@ -378,6 +378,11 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
                   <p style={{ margin: '0.2rem 0 0', fontSize: '0.85rem', color: '#94a3b8', fontWeight: 500 }}>
                     {acc.handle || acc.username || `@${acc.platform}_user`}
                   </p>
+                  {acc.liveServerUrl && (
+                    <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                      <span style={{ color: '#475569' }}>Server Live:</span> {acc.liveServerUrl}
+                    </div>
+                  )}
                 </div>
 
                 {/* Badges Status */}
@@ -479,6 +484,20 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
                       }
                       value={formData.handle} onChange={e => setFormData({...formData, handle: e.target.value})} style={{ width: '100%' }} 
                     />
+                  </div>
+
+                  <div className="input-group" style={{ marginBottom: '2.5rem' }}>
+                    <label className="stat-label">URL SERVER LIVE HUGGING FACE (OPSIONAL)</label>
+                    <input 
+                      type="text" 
+                      placeholder="Contoh: https://irvancharis-live1.hf.space"
+                      value={formData.liveServerUrl || ''} 
+                      onChange={e => setFormData({...formData, liveServerUrl: e.target.value})} 
+                      style={{ width: '100%' }} 
+                    />
+                    <small style={{ display: 'block', marginTop: '0.4rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      Kosongkan jika ingin menggunakan load balancing server umum secara otomatis.
+                    </small>
                   </div>
 
                   <div style={{ padding: '2.5rem', background: '#f8fafc', borderRadius: '28px', border: '1px solid #e2e8f0', position: 'relative' }}>

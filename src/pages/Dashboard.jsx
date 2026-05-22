@@ -110,7 +110,9 @@ const Dashboard = ({ posts: allPosts, onUseMedia, user, onViewAll }) => {
                     <td style={{ padding: '1.2rem 1.5rem' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', maxWidth: '300px' }}>
                         <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600, color: 'var(--text-main)' }}>
-                          {post.ytTitle || post.ytTitleTemplate || post.content}
+                          {post.postType === 'live'
+                            ? (post.ytTitle || post.ytTitleTemplate || 'Tanpa Judul')
+                            : (post.ytTitle || post.ytTitleTemplate || (post.content ? (post.content.split('\n')[0].substring(0, 50) + (post.content.length > 50 ? '...' : '')) : 'Tanpa Judul'))}
                         </div>
                         <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
                           {post.postType === 'live' && (

@@ -49,7 +49,9 @@ const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia, user, onEdit }) =
 
   const filteredPosts = posts.filter(post => {
     if (post.status === 'Deleted') return false;
-    const matchesSearch = post.content?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = (post.content?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           post.ytTitle?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           post.ytTitleTemplate?.toLowerCase().includes(searchTerm.toLowerCase()));
     
     // Status filter
     const matchesStatus = statusFilter === 'All' || 
@@ -230,7 +232,9 @@ const ScheduleList = ({ posts, onDelete, onUpdate, onUseMedia, user, onEdit }) =
                     </td>
                     <td style={{ padding: '1.2rem 1.5rem' }}>
                       <div style={{ maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.9rem', color: 'var(--text-main)' }}>
-                        {post.ytTitle || post.ytTitleTemplate || post.content}
+                        {post.postType === 'live'
+                          ? (post.ytTitle || post.ytTitleTemplate || 'Tanpa Judul')
+                          : (post.ytTitle || post.ytTitleTemplate || (post.content ? (post.content.split('\n')[0].substring(0, 50) + (post.content.length > 50 ? '...' : '')) : 'Tanpa Judul'))}
                       </div>
                     </td>
                     <td style={{ padding: '1.2rem 1.5rem' }}>

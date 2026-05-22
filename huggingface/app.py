@@ -221,6 +221,38 @@ def trigger_next_live(parent_post_id):
     except Exception as e:
         print(f"Error in trigger_next_live: {e}")
 
+def update_live_metadata(post_id):
+    if not db:
+        print("Firebase DB not initialized, skipping metadata update.")
+        return
+    try:
+        config_ref = db.collection('settings').document('config')
+        config_doc = config_ref.get()
+        
+        # Fallback to default GAS webAppUrl
+        web_app_url = "https://script.google.com/macros/s/AKfycbwdxnTBbLtzqglMPRAx_whpyZt4_zmZNA77TsWI6AmJEociu0h_QhsSCTXinDua8HJleg/exec"
+        
+        if config_doc.exists:
+            config_data = config_doc.to_dict() or {}
+            db_web_app_url = config_data.get('webAppUrl')
+            if db_web_app_url:
+                web_app_url = db_web_app_url
+                print(f"Loaded webAppUrl from Firestore: {web_app_url}")
+        
+        url = f"{web_app_url}?action=updateLiveMetadata&postId={post_id}"
+        print(f"Triggering live metadata update via GAS: {url}")
+        
+        def fire_request():
+            try:
+                res = requests.post(url, timeout=30)
+                print(f"GAS updateLiveMetadata response: {res.status_code} - {res.text}")
+            except Exception as req_err:
+                print(f"Failed to fire GAS updateLiveMetadata: {req_err}")
+                
+        threading.Thread(target=fire_request, daemon=True).start()
+    except Exception as e:
+        print(f"Error in update_live_metadata: {e}")
+
 # =========================================================================
 # STREAMING RUNNER THREAD
 # =========================================================================
@@ -394,10 +426,18 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
         max_backoff = 60   # Maksimal penundaan 60 detik
         next_live_state = {"triggered": False}
         
-        # Background Watchdog Thread to guarantee triggerNextLive runs exactly 5 minutes before stream duration ends,
+        # Background Watchdog Thread to guarantee dynamic metadata update or graceful duration completion,
         # completely immune to FFmpeg log buffering or process stdout readline delays.
         def watchdog_loop():
             print(f"[WATCHDOG] Started background watchdog for stream: {post_id}. Target duration: {duration} mins, auto_loop: {is_auto_loop}")
+            
+            try:
+                interval_mins = int(duration)
+            except ValueError:
+                interval_mins = 60  # Default to 60 minutes if duration is 24/7 or invalid
+                
+            last_update = datetime.now()
+            
             while True:
                 # Terminate watchdog thread if the stream goes inactive
                 with stream_lock:
@@ -405,23 +445,38 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                         print(f"[WATCHDOG] Stream {post_id} is no longer active. Exiting watchdog thread.")
                         break
                         
-                if duration != "24/7" and is_auto_loop and not next_live_state["triggered"]:
-                    try:
-                        duration_sec = int(duration) * 60
-                        elapsed = (datetime.now() - start_datetime).total_seconds()
-                        remaining_sec = duration_sec - elapsed
-                        
-                        # Trigger 5 minutes (300 seconds) prior to completion
-                        if remaining_sec <= 300:
-                            next_live_state["triggered"] = True
-                            with stream_lock:
-                                if post_id in active_streams:
-                                    msg = "[SYSTEM] [WATCHDOG] 5 menit sebelum selesai. Memicu Auto Create & Start Live 2..."
-                                    active_streams[post_id]["logs"].append(msg)
-                                    print(f"[WATCHDOG] Triggering next live for {post_id}. Remaining: {remaining_sec}s")
-                            trigger_next_live(post_id)
-                    except Exception as watch_err:
-                        print(f"[WATCHDOG] Error checking stream duration: {watch_err}")
+                # If Auto Loop is enabled, we perform periodic dynamic metadata updates (Method 1 - Seamless)
+                if is_auto_loop:
+                    elapsed_from_last_update = (datetime.now() - last_update).total_seconds()
+                    if elapsed_from_last_update >= (interval_mins * 60):
+                        print(f"[WATCHDOG] Time for metadata update. Interval: {interval_mins} mins. Triggering update...")
+                        last_update = datetime.now()
+                        with stream_lock:
+                            if post_id in active_streams:
+                                active_streams[post_id]["logs"].append("[SYSTEM] [WATCHDOG] Waktunya memperbarui metadata. Memicu update metadata dinamis...")
+                        update_live_metadata(post_id)
+                
+                # If NOT auto loop, stop stream when duration ends
+                elif duration != "24/7":
+                    elapsed_from_start = (datetime.now() - start_datetime).total_seconds()
+                    if elapsed_from_start >= (int(duration) * 60):
+                        print(f"[WATCHDOG] Duration met. Stopping stream {post_id}.")
+                        with stream_lock:
+                            if post_id in active_streams:
+                                active_streams[post_id]["logs"].append("[SYSTEM] [WATCHDOG] Durasi siaran telah terpenuhi. Menghentikan siaran...")
+                                s = active_streams[post_id]
+                                s["status"] = "IDLE"
+                                if s.get("process"):
+                                    try: s["process"].kill()
+                                    except: pass
+                                if db:
+                                    try:
+                                        db.collection('posts').document(post_id).update({
+                                            'status': 'Completed',
+                                            'error_log': ''
+                                        })
+                                    except: pass
+                        break
                 
                 time.sleep(10)
                 
@@ -436,9 +491,9 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                     break
                 active_streams[post_id]["status"] = "STREAMING"
             
-            # Calculate remaining duration if not 24/7
+            # Calculate remaining duration if not 24/7 and not auto loop
             cmd_duration = []
-            if duration != "24/7":
+            if duration != "24/7" and not is_auto_loop:
                 try:
                     duration_sec = int(duration) * 60
                 except ValueError:

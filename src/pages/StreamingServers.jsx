@@ -10,9 +10,20 @@ const StreamingServers = ({ user }) => {
   const [servers, setServers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [formData, setFormData] = useState({ name: '', url: '' });
+  const [formData, setFormData] = useState({ name: '', url: '', accountId: '', accountName: '' });
   const [statuses, setStatuses] = useState({});
   const [checkingAll, setCheckingAll] = useState(false);
+  const [accounts, setAccounts] = useState([]);
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, 'social_accounts'), where('userId', '==', user.id));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const accData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setAccounts(accData);
+    });
+    return unsubscribe;
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -88,9 +99,11 @@ const StreamingServers = ({ user }) => {
         userId: user.id,
         name: formData.name.trim(),
         url: formattedUrl,
+        accountId: formData.accountId || null,
+        accountName: formData.accountName || null,
         createdAt: serverTimestamp()
       });
-      setFormData({ name: '', url: '' });
+      setFormData({ name: '', url: '', accountId: '', accountName: '' });
       setShowModal(false);
     } catch (err) {
       alert("Gagal menambahkan server: " + err.message);
@@ -128,7 +141,10 @@ const StreamingServers = ({ user }) => {
           </button>
           <button 
             className="btn btn-primary" 
-            onClick={() => setShowModal(true)}
+            onClick={() => {
+              setFormData({ name: '', url: '', accountId: '', accountName: '' });
+              setShowModal(true);
+            }}
             style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', height: '42px', padding: '0 1.2rem', borderRadius: '12px' }}
           >
             <Plus size={18} />
@@ -168,6 +184,15 @@ const StreamingServers = ({ user }) => {
                         <span>Buka Space</span>
                         <ExternalLink size={12} />
                       </a>
+                      {server.accountName ? (
+                        <div style={{ display: 'inline-flex', alignItems: 'center', fontSize: '0.75rem', background: '#e0f2fe', color: '#0369a1', padding: '0.2rem 0.5rem', borderRadius: '6px', marginTop: '0.4rem', fontWeight: 600 }}>
+                          Terikat: {server.accountName}
+                        </div>
+                      ) : (
+                        <div style={{ display: 'inline-flex', alignItems: 'center', fontSize: '0.75rem', background: '#f1f5f9', color: '#475569', padding: '0.2rem 0.5rem', borderRadius: '6px', marginTop: '0.4rem', fontWeight: 600 }}>
+                          Semua Akun (Umum)
+                        </div>
+                      )}
                     </div>
                   </div>
                   <button 
@@ -293,6 +318,33 @@ const StreamingServers = ({ user }) => {
                   />
                   <small style={{ display: 'block', marginTop: '0.4rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                     Pastikan menyertakan skema HTTP/HTTPS lengkap. Gunakan URL langsung Hugging Face Space (direct Space URL).
+                  </small>
+                </div>
+
+                <div className="input-group">
+                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem', display: 'block' }}>Hubungkan ke Akun Sosial (Opsional)</label>
+                  <select 
+                    value={formData.accountId || ''} 
+                    onChange={e => {
+                      const selectedId = e.target.value;
+                      const selectedAcc = accounts.find(a => a.id === selectedId);
+                      setFormData({ 
+                        ...formData, 
+                        accountId: selectedId,
+                        accountName: selectedAcc ? `${selectedAcc.platform.toUpperCase()} - ${selectedAcc.name || selectedAcc.username}` : ''
+                      });
+                    }}
+                    style={{ background: '#f8fafc', border: '1px solid #e2e8f0', width: '100%', padding: '0.75rem 1rem', borderRadius: '12px' }}
+                  >
+                    <option value="">Semua Akun / Umum (Load Balancing)</option>
+                    {accounts.map(acc => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.platform.toUpperCase()} - {acc.name || acc.username}
+                      </option>
+                    ))}
+                  </select>
+                  <small style={{ display: 'block', marginTop: '0.4rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    Pilih akun tertentu jika Anda ingin membatasi server ini khusus untuk menyiarkan akun tersebut.
                   </small>
                 </div>
 

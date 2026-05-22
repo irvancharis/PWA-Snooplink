@@ -1174,10 +1174,12 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
               {postType === 'live' ? (
                 <>
                   <div className="input-group">
-                    <label className="stat-label">Judul Live Streaming <span style={{color: 'red'}}>*</span></label>
+                    <label className="stat-label">
+                      {isAutoLoop ? 'Daftar Judul Live Streaming (Satu per baris - diacak setiap sesi)' : 'Judul Live Streaming'} <span style={{color: 'red'}}>*</span>
+                    </label>
                     <textarea 
                       rows={3} 
-                      placeholder="Masukkan judul untuk siaran langsung... (Bisa lebih dari 1 judul. Masukkan 1 judul per baris jika ingin diacak pada setiap live)" 
+                      placeholder={isAutoLoop ? 'Masukkan pilihan judul (satu judul per baris). Contoh:\nJudul Pertama {part}\nJudul Kedua {part}' : 'Masukkan judul untuk siaran langsung... (Bisa lebih dari 1 judul. Masukkan 1 judul per baris jika ingin diacak)'}
                       style={{ marginTop: '0.5rem', background: '#fff', width: '100%', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0.75rem 1rem', fontFamily: 'inherit', resize: 'vertical' }}
                       value={ytTitle}
                       onChange={(e) => setYtTitle(e.target.value)}
@@ -1186,10 +1188,12 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
                   </div>
 
                   <div className="input-group">
-                    <label className="stat-label">Deskripsi Live Streaming <span style={{color: 'red'}}>*</span></label>
+                    <label className="stat-label">
+                      {isAutoLoop ? 'Deskripsi Live Streaming (Paragraf akan diacak setiap sesi)' : 'Deskripsi Live Streaming'} <span style={{color: 'red'}}>*</span>
+                    </label>
                     <textarea 
                       rows={5} 
-                      placeholder="Tulis deskripsi siaran langsung Anda..."
+                      placeholder={isAutoLoop ? 'Tulis deskripsi Anda. Pisahkan dengan baris kosong (double enter) untuk membagi paragraf yang akan diacak posisinya.' : 'Tulis deskripsi siaran langsung Anda...'}
                       style={{ marginTop: '0.5rem', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0.75rem 1rem' }}
                       value={content}
                       onChange={(e) => setContent(e.target.value)}
@@ -1302,7 +1306,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
                         </div>
                       </label>
 
-                      {/* Opsi 3: Auto Loop / Rollover Berkelanjutan */}
+                      {/* Opsi 3: Loop Live (Metode 1 - Update Metadata Dinamis) */}
                       <label style={{ 
                         display: 'flex', 
                         alignItems: 'flex-start', 
@@ -1327,9 +1331,9 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
                         />
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
                           <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                            Auto Loop / Rollover Berkelanjutan <span style={{ background: '#fee2e2', color: '#ef4444', fontSize: '0.65rem', padding: '0.1rem 0.4rem', borderRadius: '6px', fontWeight: 800 }}>Rekomendasi</span>
+                            Loop Live (Metode 1) <span style={{ background: '#fee2e2', color: '#ef4444', fontSize: '0.65rem', padding: '0.1rem 0.4rem', borderRadius: '6px', fontWeight: 800 }}>Rekomendasi</span>
                           </span>
-                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: '1.3' }}>Siaran berjalan selamanya dengan otomatis membuat Live 2, Live 3, dst. secara bersambung setiap X menit.</span>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: '1.3' }}>Menyiarkan secara terus-menerus tanpa putus, dengan otomatis memperbarui judul (acak), deskripsi (acak paragraf), dan tag (acak posisi) secara berkala agar aman dari penalti spam.</span>
                         </div>
                       </label>
 
@@ -1351,7 +1355,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
                         />
                         {isAutoLoop && (
                           <p style={{ margin: '0.4rem 0 0 0', fontSize: '0.7rem', color: '#ef4444', fontWeight: 600, lineHeight: 1.4 }}>
-                            * Sistem otomatis membuat siaran baru (Live 2, dst) dan mengalihkan penonton 5 menit sebelum durasi sesi ini habis.
+                            * Sistem akan memperbarui Judul, Deskripsi, dan Tag siaran langsung secara otomatis dan acak setiap durasi sesi habis, tanpa memutus live stream.
                           </p>
                         )}
                       </div>
@@ -1406,7 +1410,9 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
               {hasYoutubeSelected && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <div className="input-group">
-                    <label className="stat-label">Tags (Pisahkan dengan koma)</label>
+                    <label className="stat-label">
+                      {isAutoLoop ? 'Tags (Pisahkan dengan koma - posisi tag akan diacak)' : 'Tags (Pisahkan dengan koma)'}
+                    </label>
                     <input 
                       type="text" 
                       placeholder="vlog, tutorial, tips" 
