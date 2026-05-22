@@ -51,7 +51,7 @@ except Exception as e:
 stream_lock = threading.Lock()
 active_streams = {}  # Dictionary mapping post_id -> active_stream details
 
-HF_SECRET = os.getenv("HF_SECRET", "SnooplinkSuperSecret123")
+HF_SECRET = os.getenv("HF_SECRET", "SnooplinkSuperSecret123").strip().strip('"').strip("'")
 
 # =========================================================================
 # GOOGLE DRIVE DOWNLOAD & WARNING BYPASS LOGIC
@@ -925,7 +925,8 @@ def start_stream():
     post_id = request.args.get("postId")
     secret = request.args.get("secret")
     
-    if secret != HF_SECRET:
+    clean_secret = secret.strip().strip('"').strip("'") if secret else ""
+    if clean_secret != HF_SECRET:
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
         
     if not post_id:
@@ -988,7 +989,8 @@ def stop_stream():
     secret = request.args.get("secret") or request.form.get("secret")
     post_id = request.args.get("postId") or request.form.get("postId")
     
-    if secret != HF_SECRET:
+    clean_secret = secret.strip().strip('"').strip("'") if secret else ""
+    if clean_secret != HF_SECRET:
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
         
     stopped_posts = []
