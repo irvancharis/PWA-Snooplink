@@ -30,3 +30,8 @@ dist-ssr
 
 # Firebase Cache
 .firebase/
+
+# Firebase Credential JSON Files
+*-firebase-adminsdk-*.json
+*.json
+
