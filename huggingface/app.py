@@ -23,12 +23,18 @@ def add_cors_headers(response):
 # FIREBASE ADMIN INITIALIZATION
 # =========================================================================
 db = None
+db_init_status = "Firebase variables not checked yet"
 try:
     project_id = os.getenv("FIREBASE_PROJECT_ID")
     client_email = os.getenv("FIREBASE_CLIENT_EMAIL")
     private_key = os.getenv("FIREBASE_PRIVATE_KEY")
     
-    if project_id and client_email and private_key:
+    missing = []
+    if not project_id: missing.append("FIREBASE_PROJECT_ID")
+    if not client_email: missing.append("FIREBASE_CLIENT_EMAIL")
+    if not private_key: missing.append("FIREBASE_PRIVATE_KEY")
+    
+    if not missing:
         formatted_key = private_key.replace("\\n", "\n")
         cred = credentials.Certificate({
             "type": "service_account",
@@ -39,11 +45,14 @@ try:
         })
         firebase_admin.initialize_app(cred)
         db = firestore.client()
+        db_init_status = "Successfully initialized"
         print("Firebase Admin successfully initialized!")
     else:
-        print("Offline/Unconfigured Mode: Firebase environment variables are missing.")
+        db_init_status = f"Missing environment variables: {', '.join(missing)}"
+        print(f"Offline/Unconfigured Mode: {db_init_status}")
 except Exception as e:
-    print(f"Error initializing Firebase: {e}")
+    db_init_status = f"Error initializing Firebase: {str(e)}"
+    print(db_init_status)
 
 # =========================================================================
 # STATE MANAGER & STREAM CONTROL (MULTI-STREAM CONCURRENT SUPPORT)
@@ -933,7 +942,7 @@ def start_stream():
         return jsonify({"status": "error", "message": "Missing postId parameter"}), 400
         
     if not db:
-        return jsonify({"status": "error", "message": "Database not initialized"}), 500
+        return jsonify({"status": "error", "message": f"Database not initialized: {db_init_status}"}), 500
         
     try:
         # Check if already running
