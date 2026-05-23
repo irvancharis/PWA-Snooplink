@@ -679,7 +679,22 @@ def check_and_resume_active_stream():
     if not db:
         return
     try:
+        # Get this Space's own domain or ID to avoid resuming streams from other nodes
+        space_host = os.getenv("SPACE_HOST") # e.g. "arsafaqih94-tandon.hf.space"
+        space_id = os.getenv("SPACE_ID")     # e.g. "Arsafaqih94/tandon"
+        
+        self_urls = []
+        if space_host:
+            self_urls.append(f"https://{space_host.strip().lower()}")
+        if space_id:
+            parts = space_id.split("/")
+            if len(parts) == 2:
+                user, space = parts[0].lower(), parts[1].lower()
+                self_urls.append(f"https://{user}-{space}.hf.space")
+                
+        print(f"[SYSTEM] Startup resume scan. Self URLs: {self_urls}")
         print("Checking Firestore for active stream to resume...")
+        
         docs = db.collection('posts').where('status', '==', 'LIVE').stream()
         for doc in docs:
             post_data = doc.to_dict()
@@ -687,6 +702,25 @@ def check_and_resume_active_stream():
             post_type = post_data.get('postType', 'post')
             
             if post_type == 'live':
+                streaming_node_url = post_data.get('streamingNodeUrl')
+                node_url_clean = streaming_node_url.strip().lower().rstrip("/") if streaming_node_url else ""
+                
+                # Verify if this post is assigned to this specific Space server
+                is_assigned_to_me = False
+                if self_urls and node_url_clean:
+                    for self_url in self_urls:
+                        self_url_clean = self_url.strip().lower().rstrip("/")
+                        if self_url_clean in node_url_clean or node_url_clean in self_url_clean:
+                            is_assigned_to_me = True
+                            break
+                else:
+                    # Fallback for local development or if not running on HF Space
+                    is_assigned_to_me = True
+                    
+                if not is_assigned_to_me:
+                    print(f"[SYSTEM] Skip resuming post {post_id} because it belongs to another node: {streaming_node_url}")
+                    continue
+                    
                 media_url = post_data.get('mediaUrl')
                 stream_key = post_data.get('streamKey')
                 duration = post_data.get('liveDuration', '24/7')
