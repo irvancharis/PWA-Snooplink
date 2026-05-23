@@ -437,6 +437,61 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
             if os.path.exists(temp_stamp_path):
                 try: os.remove(temp_stamp_path)
                 except: pass
+                
+        # 2.5. If auto loop is enabled, preprocess the video to make it a seamless mirror loop (Forward + Reverse)
+        # This is extremely effective for fire, water, smoke, and ambient content.
+        if is_auto_loop:
+            try:
+                # Check video duration first
+                duration_check = subprocess.run(["ffmpeg", "-i", temp_video_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                duration_match = re.search(r"Duration:\s*(\d+):(\d+):(\d+)", duration_check.stderr)
+                is_short_video = False
+                if duration_match:
+                    hours, minutes, seconds = map(int, duration_match.groups())
+                    total_duration_sec = hours * 3600 + minutes * 60 + seconds
+                    is_short_video = total_duration_sec <= 600  # Only preprocess videos under 10 minutes to prevent timeouts
+                    
+                if is_short_video:
+                    with stream_lock:
+                        if post_id in active_streams:
+                            active_streams[post_id]["logs"].append("[SYSTEM] Membuat loop siaran menjadi seamless (Mirror Loop)...")
+                            
+                    temp_seamless_path = f"/tmp/stream_input_seamless_{post_id}.mp4"
+                    
+                    # Preprocess using FFmpeg: Concatenate video forward + backward, and duplicate audio forward + forward
+                    if "Audio:" in duration_check.stderr:
+                        seamless_cmd = [
+                            "ffmpeg", "-y", "-i", temp_video_path,
+                            "-filter_complex", "[0:v]reverse[revv];[0:v][revv]concat=n=2:v=1:a=0[outv];[0:a][0:a]concat=n=2:v=0:a=1[outa]",
+                            "-map", "[outv]", "-map", "[outa]",
+                            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                            "-c:a", "aac", "-b:a", "128k",
+                            temp_seamless_path
+                        ]
+                    else:
+                        seamless_cmd = [
+                            "ffmpeg", "-y", "-i", temp_video_path,
+                            "-filter_complex", "[0:v]reverse[revv];[0:v][revv]concat=n=2:v=1:a=0[outv]",
+                            "-map", "[outv]",
+                            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                            temp_seamless_path
+                        ]
+                        
+                    res = subprocess.run(seamless_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    if res.returncode == 0:
+                        os.replace(temp_seamless_path, temp_video_path)
+                        with stream_lock:
+                            if post_id in active_streams:
+                                active_streams[post_id]["logs"].append("[SYSTEM] Loop video seamless (Mirror Loop) berhasil diterapkan!")
+                    else:
+                        print(f"[SYSTEM] Gagal membuat loop seamless: {res.stderr.decode('utf-8', errors='ignore')}")
+                        with stream_lock:
+                            if post_id in active_streams:
+                                active_streams[post_id]["logs"].append("[SYSTEM] Warning: Gagal membuat loop seamless. Menggunakan loop standar...")
+                else:
+                    print("[SYSTEM] Video durasinya > 10 menit, menggunakan loop standar untuk menghemat resource.")
+            except Exception as le:
+                print(f"[SYSTEM] Error creating seamless loop: {le}")
         
         # Check if cancelled during download/processing
         with stream_lock:
