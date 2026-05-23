@@ -442,6 +442,30 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
         # This is extremely effective for fire, water, smoke, and ambient content, keeping flow forward naturally.
         if is_auto_loop:
             try:
+                # If a separate backsound audio path is active, mux it into the video first
+                # to create a single unified source file. This guarantees perfect A/V sync 
+                # and allows both video and audio tracks to crossfade at the exact same loop boundaries.
+                if combined_audio_path and os.path.exists(combined_audio_path):
+                    with stream_lock:
+                        if post_id in active_streams:
+                            active_streams[post_id]["logs"].append("[SYSTEM] Menggabungkan audio backsound ke dalam track video sebelum loop...")
+                    
+                    temp_muxed_path = f"/tmp/stream_muxed_{post_id}.mp4"
+                    mux_cmd = [
+                        "ffmpeg", "-y", "-i", temp_video_path, "-i", combined_audio_path,
+                        "-map", "0:v:0", "-map", "1:a:0",
+                        "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+                        "-shortest", # Align to the shorter duration (the video)
+                        temp_muxed_path
+                    ]
+                    mux_res = subprocess.run(mux_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    if mux_res.returncode == 0:
+                        os.replace(temp_muxed_path, temp_video_path)
+                        combined_audio_path = None # Signal that audio is now pre-muxed!
+                        print("[SYSTEM] Audio backsound berhasil dimux ke video.")
+                    else:
+                        print(f"[SYSTEM] Gagal memux audio backsound: {mux_res.stderr.decode('utf-8', errors='ignore')}")
+
                 # Check video duration first
                 duration_check = subprocess.run(["ffmpeg", "-i", temp_video_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 duration_match = re.search(r"Duration:\s*(\d+):(\d+):(\d+\.\d+|\d+)", duration_check.stderr)
@@ -467,21 +491,23 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                     main_start = fade_dur
                     main_end = total_duration_sec - fade_dur
                     
-                    # Construct FFmpeg command using xfade (video) and acrossfade (audio)
+                    # Construct refined FFmpeg command forcing CFR (30fps) and constant audio rate (44100Hz)
                     if "Audio:" in duration_check.stderr:
                         seamless_cmd = [
                             "ffmpeg", "-y", "-i", temp_video_path,
                             "-filter_complex", 
-                            f"[0:v]split[v1][v2];"
-                            f"[v1]trim=start={main_start}:end={main_end},setpts=PTS-STARTPTS[vmain];"
-                            f"[v2]trim=start={main_end}:end={total_duration_sec},setpts=PTS-STARTPTS[vfadeout];"
-                            f"[0:v]trim=start=0:end={fade_dur},setpts=PTS-STARTPTS[vfadein];"
+                            f"[0:v]fps=30,format=yuv420p[v_cfr];"
+                            f"[v_cfr]split[v1_all][v2_all];"
+                            f"[v1_all]trim=start={main_start}:end={main_end},setpts=PTS-STARTPTS[vmain];"
+                            f"[v2_all]trim=start={main_end}:end={total_duration_sec},setpts=PTS-STARTPTS[vfadeout];"
+                            f"[v_cfr]trim=start=0:end={fade_dur},setpts=PTS-STARTPTS[vfadein];"
                             f"[vfadeout][vfadein]xfade=transition=fade:duration={fade_dur}:offset=0[vjoin];"
                             f"[vmain][vjoin]concat=n=2:v=1:a=0[outv];"
-                            f"[0:a]asplit[a1][a2];"
-                            f"[a1]atrim=start={main_start}:end={main_end},asetpts=PTS-STARTPTS[amain];"
-                            f"[a2]atrim=start={main_end}:end={total_duration_sec},asetpts=PTS-STARTPTS[afadeout];"
-                            f"[0:a]atrim=start=0:end={fade_dur},asetpts=PTS-STARTPTS[afadein];"
+                            f"[0:a]aresample=44100,aformat=channel_layouts=stereo[a_cfr];"
+                            f"[a_cfr]asplit[a1_all][a2_all];"
+                            f"[a1_all]atrim=start={main_start}:end={main_end},asetpts=PTS-STARTPTS[amain];"
+                            f"[a2_all]atrim=start={main_end}:end={total_duration_sec},asetpts=PTS-STARTPTS[afadeout];"
+                            f"[a_cfr]atrim=start=0:end={fade_dur},asetpts=PTS-STARTPTS[afadein];"
                             f"[afadeout][afadein]acrossfade=d={fade_dur}:c1=tri:c2=tri[ajoin];"
                             f"[amain][ajoin]concat=n=2:v=0:a=1[outa]",
                             "-map", "[outv]", "-map", "[outa]",
@@ -493,10 +519,11 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                         seamless_cmd = [
                             "ffmpeg", "-y", "-i", temp_video_path,
                             "-filter_complex", 
-                            f"[0:v]split[v1][v2];"
-                            f"[v1]trim=start={main_start}:end={main_end},setpts=PTS-STARTPTS[vmain];"
-                            f"[v2]trim=start={main_end}:end={total_duration_sec},setpts=PTS-STARTPTS[vfadeout];"
-                            f"[0:v]trim=start=0:end={fade_dur},setpts=PTS-STARTPTS[vfadein];"
+                            f"[0:v]fps=30,format=yuv420p[v_cfr];"
+                            f"[v_cfr]split[v1_all][v2_all];"
+                            f"[v1_all]trim=start={main_start}:end={main_end},setpts=PTS-STARTPTS[vmain];"
+                            f"[v2_all]trim=start={main_end}:end={total_duration_sec},setpts=PTS-STARTPTS[vfadeout];"
+                            f"[v_cfr]trim=start=0:end={fade_dur},setpts=PTS-STARTPTS[vfadein];"
                             f"[vfadeout][vfadein]xfade=transition=fade:duration={fade_dur}:offset=0[vjoin];"
                             f"[vmain][vjoin]concat=n=2:v=1:a=0[outv]",
                             "-map", "[outv]",
@@ -635,10 +662,12 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                 bitrate = "3000k"
                 
             buf_size = f"{int(bitrate.replace('k', '')) * 2}k"
-            vcodec = ["-c:v", "libx264", "-b:v", bitrate, "-maxrate", bitrate, "-bufsize", buf_size, "-pix_fmt", "yuv420p", "-g", "60", "-preset", "ultrafast", "-tune", "zerolatency"]
+            # Force constant 30 fps and keyframe interval (-g 60) for YouTube RTMP streaming
+            vcodec = ["-c:v", "libx264", "-b:v", bitrate, "-maxrate", bitrate, "-bufsize", buf_size, "-pix_fmt", "yuv420p", "-g", "60", "-r", "30", "-preset", "ultrafast", "-tune", "zerolatency"]
             acodec = ["-c:a", "aac", "-b:a", "128k", "-ar", "44100"]
  
-            cmd = ["ffmpeg", "-y"]
+            # Force constant frame rate sync across stream boundaries (-vsync cfr) to completely eliminate loop boundary stuttering
+            cmd = ["ffmpeg", "-y", "-vsync", "cfr"]
             cmd.extend(inputs)
             if cmd_duration:
                 cmd.extend(cmd_duration)
