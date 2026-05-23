@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, query, getDocs, doc, updateDoc, onSnapshot } from 'firebase/firestore';
-import { ShieldCheck, XCircle, Settings, CheckCircle2, Search, Mail } from 'lucide-react';
+import { ShieldCheck, XCircle, Settings, CheckCircle2, Search, Mail, Key } from 'lucide-react';
 
 const AdminDashboard = ({ scriptUrl }) => {
   const [users, setUsers] = useState([]);
@@ -118,6 +118,39 @@ const AdminDashboard = ({ scriptUrl }) => {
     }
   };
 
+  const handleUpdatePassword = async (user) => {
+    const newPassword = prompt(`Masukkan password baru untuk ${user.name}:`, "");
+    if (newPassword === null) return;
+    if (newPassword.trim() === "") {
+      alert("Password tidak boleh kosong!");
+      return;
+    }
+    
+    try {
+      await updateDoc(doc(db, 'users', user.id), { password: newPassword });
+      alert(`Password untuk ${user.name} berhasil diperbarui!`);
+      
+      const emailBody = `
+        <div style="font-family: sans-serif; padding: 20px; line-height: 1.6; color: #334155;">
+          <h2 style="color: #4f46e5; margin-bottom: 1rem;">Halo ${user.name},</h2>
+          <p>Password akun <strong>Snooplink</strong> Anda telah <b>diperbarui oleh Superadmin</b>.</p>
+          <p style="background: #f8fafc; padding: 1rem; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 1.1rem; font-family: monospace; display: inline-block;">
+            Password Baru Anda: <strong>${newPassword}</strong>
+          </p>
+          <p style="margin-top: 1rem;">Silakan gunakan password baru ini untuk masuk ke dashboard Snooplink Anda.</p>
+          <br/>
+          <p style="border-top: 1px solid #e2e8f0; padding-top: 1rem; font-size: 0.85rem; color: #64748b;">
+            Terima kasih,<br/>
+            <strong>Tim Snooplink</strong>
+          </p>
+        </div>
+      `;
+      sendEmailNotification(user.email, "Password Snooplink Anda Telah Diperbarui!", emailBody);
+    } catch (e) {
+      alert("Error: " + e.message);
+    }
+  };
+
   const filteredUsers = users.filter(u => u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || u.email?.toLowerCase().includes(searchTerm.toLowerCase()));
 
   if (loading) return <div style={{ padding: '2rem' }}>Memuat data pengguna...</div>;
@@ -211,13 +244,16 @@ const AdminDashboard = ({ scriptUrl }) => {
                 </td>
                 <td style={{ padding: '1.2rem', textAlign: 'right' }}>
                   {u.role !== 'admin' && (
-                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+                      <button onClick={() => handleUpdatePassword(u)} style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Ubah Password">
+                        <Key size={18} />
+                      </button>
                       {u.status === 'pending' && (
                         <>
-                          <button onClick={() => handleApprove(u)} style={{ background: '#10b981', color: 'white', border: 'none', padding: '0.5rem', borderRadius: '8px', cursor: 'pointer' }} title="Setujui">
+                          <button onClick={() => handleApprove(u)} style={{ background: '#10b981', color: 'white', border: 'none', padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Setujui">
                             <CheckCircle2 size={18} />
                           </button>
-                          <button onClick={() => handleReject(u)} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '0.5rem', borderRadius: '8px', cursor: 'pointer' }} title="Tolak">
+                          <button onClick={() => handleReject(u)} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Tolak">
                             <XCircle size={18} />
                           </button>
                         </>
