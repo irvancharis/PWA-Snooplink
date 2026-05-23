@@ -419,10 +419,23 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                     'error_log': 'Hugging Face: Menempelkan gambar stamp...'
                 })
             
-            # Scale the stamp proportionally to exactly 12% of the video display height, pre-compensating for standard 16:9 playback stretch
+            # Detect video height dynamically to scale the stamp perfectly to exactly 12% of the height
+            video_h = 1080  # Default fallback
+            try:
+                probe_res = subprocess.run(["ffmpeg", "-i", temp_video_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                res_match = re.search(r",\s*(\d+)x(\d+)", probe_res.stderr)
+                if res_match:
+                    video_h = int(res_match.group(2))
+                    print(f"[SYSTEM] Detected video height for stamp scaling: {video_h}px")
+            except Exception as pe:
+                print(f"[SYSTEM] Failed to probe video height: {pe}")
+                
+            stamp_h = int(video_h * 0.12)
+            
+            # Scale the stamp proportionally to exactly 12% of the video display height using robust scale filter, bypassing all scale2ref bugs
             stamp_cmd = [
                 "ffmpeg", "-y", "-i", temp_video_path, "-loop", "1", "-i", temp_stamp_path,
-                "-filter_complex", "[1:v][0:v]scale2ref=w=rh*0.12*iw/ih:h=rh*0.12[stamp_raw][video];[stamp_raw]setsar=1[stamp];[video][stamp]overlay=main_w-overlay_w-10:main_h-overlay_h-10:shortest=1[outv]",
+                "-filter_complex", f"[1:v]scale=-1:{stamp_h},setsar=1[stamp];[0:v][stamp]overlay=main_w-overlay_w-10:main_h-overlay_h-10:shortest=1[outv]",
                 "-map", "[outv]", "-map", "0:a?",
                 "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
                 "-c:a", "copy",
