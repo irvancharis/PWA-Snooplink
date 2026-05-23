@@ -58,6 +58,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
   const [randomMusic, setRandomMusic] = useState(false);
   const [randomMusicCount, setRandomMusicCount] = useState(1);
   const [imageStampUrl, setImageStampUrl] = useState('');
+  const [introText, setIntroText] = useState('');
 
   // Modal & Uploader UI state
   const [alertModal, setAlertModal] = useState({ show: false, title: '', message: '' });
@@ -146,6 +147,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
       setSelectedBacksoundUrls(editPost.backsoundUrls || []);
       setRandomMusicCount(editPost.randomMusicCount || 1);
       setImageStampUrl(editPost.imageStampUrl || '');
+      setIntroText(editPost.introText || '');
       setRandomThumbnail(editPost.randomThumbnail || false);
     } else {
       // Clear/Reset form when not editing
@@ -177,6 +179,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
       setSelectedBacksoundUrls([]);
       setRandomMusicCount(1);
       setImageStampUrl('');
+      setIntroText('');
       setRandomThumbnail(false);
     }
   }, [editPost, accounts]);
@@ -446,6 +449,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
           isAutoLoop,
           bitrate,
           imageStampUrl,
+          introText,
           randomVideo,
           randomMusic: backsoundMode === 'random',
           randomMusicCount: backsoundMode === 'random' ? Number(randomMusicCount) : 1,
@@ -485,6 +489,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
           isAutoLoop,
           bitrate,
           imageStampUrl,
+          introText,
           randomVideo,
           randomMusic: backsoundMode === 'random',
           randomMusicCount: backsoundMode === 'random' ? Number(randomMusicCount) : 1,
@@ -1202,6 +1207,20 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
                       value={content}
                       onChange={(e) => setContent(e.target.value)}
                       required
+                    ></textarea>
+                  </div>
+
+                  <div className="input-group">
+                    <label className="stat-label" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <span>Teks Intro Ketik (Opsional)</span>
+                      <Info size={14} style={{ color: 'var(--text-muted)' }} title="Teks sambutan bergaya mesin ketik premium yang akan muncul di atas video selama 20 detik pertama siaran langsung." />
+                    </label>
+                    <textarea 
+                      rows={2} 
+                      placeholder="Masukkan teks sambutan... (Gunakan \n untuk baris baru. Contoh: Welcome to Snoozeland...\nRelax, breathe, and enjoy the nature...)"
+                      style={{ marginTop: '0.5rem', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0.75rem 1rem', fontFamily: 'inherit', resize: 'vertical' }}
+                      value={introText}
+                      onChange={(e) => setIntroText(e.target.value)}
                     ></textarea>
                   </div>
 
