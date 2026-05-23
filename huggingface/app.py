@@ -691,6 +691,11 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                             if len(lines) >= 1:
                                 line_w = line_widths[0]
                                 x_start = (video_w - line_w) // 2
+                                try:
+                                    bbox = font.getbbox(lines[0])
+                                    bbox0 = bbox[0]
+                                except:
+                                    bbox0 = 0
                                 if t < 1.0:
                                     reveal_w = 0
                                 elif t > 4.0:
@@ -698,11 +703,17 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                                 else:
                                     reveal_w = int(line_w * ((t - 1.0) / 3.0))
                                 if reveal_w > 0:
-                                    draw_mask.rectangle([x_start, line_y_positions[0] - 5, x_start + reveal_w, line_y_positions[0] + line_heights[0] + 5], fill=255)
+                                    # Add 15px horizontal padding to prevent any cursive glyph clipping
+                                    draw_mask.rectangle([x_start + bbox0 - 15, line_y_positions[0] - 10, x_start + bbox0 + reveal_w + 15, line_y_positions[0] + line_heights[0] + 10], fill=255)
                                     
                             if len(lines) >= 2:
                                 line_w = line_widths[1]
                                 x_start = (video_w - line_w) // 2
+                                try:
+                                    bbox = font.getbbox(lines[1])
+                                    bbox0 = bbox[0]
+                                except:
+                                    bbox0 = 0
                                 if t < 4.0:
                                     reveal_w = 0
                                 elif t > 7.0:
@@ -710,7 +721,7 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                                 else:
                                     reveal_w = int(line_w * ((t - 4.0) / 3.0))
                                 if reveal_w > 0:
-                                    draw_mask.rectangle([x_start, line_y_positions[1] - 5, x_start + reveal_w, line_y_positions[1] + line_heights[1] + 5], fill=255)
+                                    draw_mask.rectangle([x_start + bbox0 - 15, line_y_positions[1] - 10, x_start + bbox0 + reveal_w + 15, line_y_positions[1] + line_heights[1] + 10], fill=255)
                                     
                             r, g, b, a = text_canvas.split()
                             revealed_alpha = ImageChops.multiply(a, mask)
