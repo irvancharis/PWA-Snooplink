@@ -310,6 +310,8 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
     temp_standard_audio_path = f"/tmp/backsound_standard_{post_id}.mp3"
     temp_stamp_path = f"/tmp/image_stamp_{post_id}.png"
     temp_stamped_video_path = f"/tmp/stream_input_stamped_{post_id}.mp4"
+    temp_intro_video_path = f"/tmp/intro_final_{post_id}.mp4"
+    intro_video_path = None
         
     try:
         bitrate = "copy"
@@ -552,6 +554,7 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                                 active_streams[post_id]["logs"].append("[SYSTEM] Loop video seamless (Crossfade Loop) berhasil diterapkan!")
                     else:
                         print(f"[SYSTEM] Gagal membuat loop seamless: {res.stderr.decode('utf-8', errors='ignore')}")
+                
                         with stream_lock:
                             if post_id in active_streams:
                                 active_streams[post_id]["logs"].append("[SYSTEM] Warning: Gagal membuat loop seamless. Menggunakan loop standar...")
@@ -559,6 +562,206 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                     print("[SYSTEM] Video durasi di luar rentang loop (5s - 10m), menggunakan loop standar.")
             except Exception as le:
                 print(f"[SYSTEM] Error creating seamless loop: {le}")
+                
+        # 2.6. If introText is provided, pre-compile the typewriter intro video segment using PNG sequence
+        if db:
+            try:
+                post_doc = db.collection('posts').document(post_id).get()
+                if post_doc.exists:
+                    post_data = post_doc.to_dict()
+                    intro_text = post_data.get('introText', None)
+                    if intro_text and intro_text.strip():
+                        intro_text = intro_text.strip()
+                        with stream_lock:
+                            if post_id in active_streams:
+                                active_streams[post_id]["logs"].append(f"[SYSTEM] Menyiapkan intro teks ketik (Typewriter Intro): \"{intro_text}\"...")
+                                
+                        # Detect video dimensions
+                        probe_res = subprocess.run(["ffmpeg", "-i", temp_video_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                        res_match = re.search(r",\s*(\d+)x(\d+)", probe_res.stderr)
+                        video_w, video_h = 1920, 1080
+                        if res_match:
+                            video_w = int(res_match.group(1))
+                            video_h = int(res_match.group(2))
+                            
+                        # Create a temp directory for PNG frames
+                        temp_frames_dir = f"/tmp/intro_frames_{post_id}"
+                        if os.path.exists(temp_frames_dir):
+                            try: shutil.rmtree(temp_frames_dir)
+                            except: pass
+                        os.makedirs(temp_frames_dir, exist_ok=True)
+                        
+                        # Create 20s clean intro segment from temp_video_path
+                        temp_intro_clean = f"/tmp/intro_clean_{post_id}.mp4"
+                        has_audio = "Audio:" in probe_res.stderr
+                        
+                        intro_seg_cmd = [
+                            "ffmpeg", "-y", "-stream_loop", "-1", "-i", temp_video_path,
+                            "-t", "20",
+                            "-c:v", "libx264", "-preset", "superfast", "-crf", "23"
+                        ]
+                        if has_audio:
+                            intro_seg_cmd.extend(["-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-ac", "2"])
+                        else:
+                            intro_seg_cmd.extend(["-an"])
+                        intro_seg_cmd.append(temp_intro_clean)
+                        
+                        subprocess.run(intro_seg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        
+                        # Generate transparent PNG sequence using PIL
+                        from PIL import Image, ImageDraw, ImageFont, ImageChops
+                        import shutil
+                        
+                        font_path = os.path.abspath("src/font/Caveat-Bold.ttf")
+                        if not os.path.exists(font_path):
+                            font_path = os.path.abspath("huggingface/src/font/Caveat-Bold.ttf") # fallback
+                            
+                        font_size = max(24, int(video_h * 0.05))
+                        try:
+                            font = ImageFont.truetype(font_path, font_size)
+                        except:
+                            font = ImageFont.load_default()
+                            
+                        max_text_width = int(video_w * 0.8)
+                        
+                        # Wrap text
+                        def wrap_text_pil(text, font, max_width):
+                            lines = []
+                            for paragraph in text.split('\n'):
+                                words = paragraph.split(' ')
+                                current_line = []
+                                for word in words:
+                                    test_line = ' '.join(current_line + [word])
+                                    bbox = font.getbbox(test_line)
+                                    w = bbox[2] - bbox[0]
+                                    if w <= max_width:
+                                        current_line.append(word)
+                                    else:
+                                        if current_line:
+                                            lines.append(' '.join(current_line))
+                                            current_line = [word]
+                                        else:
+                                            lines.append(word)
+                                if current_line:
+                                    lines.append(' '.join(current_line))
+                            return lines
+                            
+                        lines = wrap_text_pil(intro_text, font, max_text_width)
+                        
+                        # Calculate positions
+                        line_heights = []
+                        line_widths = []
+                        line_y_positions = []
+                        line_spacing = int(font_size * 0.3)
+                        
+                        total_text_height = 0
+                        for idx, line in enumerate(lines):
+                            bbox = font.getbbox(line)
+                            w = bbox[2] - bbox[0]
+                            h = bbox[3] - bbox[1]
+                            line_widths.append(w)
+                            line_heights.append(h)
+                            total_text_height += h
+                            if idx < len(lines) - 1:
+                                total_text_height += line_spacing
+                                
+                        y_start = (video_h - total_text_height) // 2
+                        current_y = y_start
+                        for idx, line in enumerate(lines):
+                            line_y_positions.append(current_y)
+                            current_y += line_heights[idx] + line_spacing
+                            
+                        overlay_fps = 30
+                        total_frames = 600 # 20 seconds at 30 fps
+                        
+                        for frame_idx in range(total_frames):
+                            t = frame_idx / float(overlay_fps)
+                            text_canvas = Image.new('RGBA', (video_w, video_h), (255, 255, 255, 0))
+                            draw_txt = ImageDraw.Draw(text_canvas)
+                            
+                            for idx, line in enumerate(lines):
+                                x = (video_w - line_widths[idx]) // 2
+                                y = line_y_positions[idx]
+                                draw_txt.text((x, y), line, font=font, fill=(255, 255, 255, 255))
+                                
+                            mask = Image.new('L', (video_w, video_h), 0)
+                            draw_mask = ImageDraw.Draw(mask)
+                            
+                            # Typewriter reveal logic
+                            if len(lines) >= 1:
+                                line_w = line_widths[0]
+                                x_start = (video_w - line_w) // 2
+                                if t < 1.0:
+                                    reveal_w = 0
+                                elif t > 4.0:
+                                    reveal_w = line_w
+                                else:
+                                    reveal_w = int(line_w * ((t - 1.0) / 3.0))
+                                if reveal_w > 0:
+                                    draw_mask.rectangle([x_start, line_y_positions[0] - 5, x_start + reveal_w, line_y_positions[0] + line_heights[0] + 5], fill=255)
+                                    
+                            if len(lines) >= 2:
+                                line_w = line_widths[1]
+                                x_start = (video_w - line_w) // 2
+                                if t < 4.0:
+                                    reveal_w = 0
+                                elif t > 7.0:
+                                    reveal_w = line_w
+                                else:
+                                    reveal_w = int(line_w * ((t - 4.0) / 3.0))
+                                if reveal_w > 0:
+                                    draw_mask.rectangle([x_start, line_y_positions[1] - 5, x_start + reveal_w, line_y_positions[1] + line_heights[1] + 5], fill=255)
+                                    
+                            r, g, b, a = text_canvas.split()
+                            revealed_alpha = ImageChops.multiply(a, mask)
+                            
+                            if t >= 18.0:
+                                fade_frac = max(0.0, 1.0 - ((t - 18.0) / 2.0))
+                                fade_mask = Image.new('L', (video_w, video_h), int(255 * fade_frac))
+                                revealed_alpha = ImageChops.multiply(revealed_alpha, fade_mask)
+                                
+                            text_canvas.putalpha(revealed_alpha)
+                            
+                            frame_name = os.path.join(temp_frames_dir, f"frame_{frame_idx:04d}.png")
+                            text_canvas.save(frame_name, "PNG")
+                            
+                        # Merge transparent PNG sequence into the intro segment using FFmpeg
+                        merge_cmd = [
+                            "ffmpeg", "-y", "-i", temp_intro_clean,
+                            "-f", "image2", "-framerate", str(overlay_fps), "-i", os.path.join(temp_frames_dir, "frame_%04d.png"),
+                            "-filter_complex", "[0:v][1:v]overlay=x=0:y=0:shortest=1[outv]",
+                            "-map", "[outv]"
+                        ]
+                        if has_audio:
+                            merge_cmd.extend(["-map", "0:a"])
+                        else:
+                            merge_cmd.extend(["-an"])
+                            
+                        merge_cmd.extend([
+                            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                            "-c:a", "copy",
+                            temp_intro_video_path
+                        ])
+                        
+                        subprocess.run(merge_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        intro_video_path = temp_intro_video_path
+                        
+                        # Clean up intermediate intro files & frames
+                        if os.path.exists(temp_intro_clean):
+                            try: os.remove(temp_intro_clean)
+                            except: pass
+                        if os.path.exists(temp_frames_dir):
+                            try: shutil.rmtree(temp_frames_dir)
+                            except: pass
+                                
+                        with stream_lock:
+                            if post_id in active_streams:
+                                active_streams[post_id]["logs"].append("[SYSTEM] Intro teks ketik (Typewriter Intro) berhasil dikompilasi!")
+            except Exception as ie:
+                print(f"[SYSTEM] Gagal memproses Typewriter Intro: {ie}")
+                with stream_lock:
+                    if post_id in active_streams:
+                        active_streams[post_id]["logs"].append(f"[SYSTEM] WARNING: Gagal memproses Typewriter Intro: {str(ie)}")
         
         # Check if cancelled during download/processing
         with stream_lock:
@@ -664,13 +867,34 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                 cmd_duration = ["-t", str(int(remaining_sec))]
  
             # 4. Compile FFmpeg Command
-            inputs = ["-re", "-stream_loop", "-1", "-i", temp_video_path]
-            if combined_audio_path:
-                inputs.extend(["-stream_loop", "-1", "-i", combined_audio_path])
-                mapping = ["-map", "0:v:0", "-map", "1:a:0"]
+            filter_complex_arg = []
+            has_audio = False
+            
+            if intro_video_path and os.path.exists(intro_video_path):
+                inputs = [
+                    "-re", "-i", intro_video_path,
+                    "-re", "-stream_loop", "-1", "-i", temp_video_path
+                ]
+                try:
+                    probe_audio = subprocess.run(["ffmpeg", "-i", temp_video_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                    has_audio = "Audio:" in probe_audio.stderr
+                except:
+                    pass
+                
+                if has_audio:
+                    filter_complex_arg = ["-filter_complex", "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[outv][outa]"]
+                    mapping = ["-map", "[outv]", "-map", "[outa]"]
+                else:
+                    filter_complex_arg = ["-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[outv]"]
+                    mapping = ["-map", "[outv]"]
             else:
-                mapping = ["-map", "0:v:0", "-map", "0:a?"]
-     
+                inputs = ["-re", "-stream_loop", "-1", "-i", temp_video_path]
+                if combined_audio_path:
+                    inputs.extend(["-stream_loop", "-1", "-i", combined_audio_path])
+                    mapping = ["-map", "0:v:0", "-map", "1:a:0"]
+                else:
+                    mapping = ["-map", "0:v:0", "-map", "0:a?"]
+      
             if bitrate == "copy":
                 bitrate = "3000k"
                 
@@ -682,11 +906,14 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
             # Force constant frame rate sync across stream boundaries (-vsync cfr) to completely eliminate loop boundary stuttering
             cmd = ["ffmpeg", "-y", "-vsync", "cfr"]
             cmd.extend(inputs)
+            if filter_complex_arg:
+                cmd.extend(filter_complex_arg)
             if cmd_duration:
                 cmd.extend(cmd_duration)
             cmd.extend(mapping)
             cmd.extend(vcodec)
-            cmd.extend(acodec)
+            if not filter_complex_arg or has_audio:
+                cmd.extend(acodec)
             # Add network timeout in microseconds (15 seconds) to prevent hanging silently
             cmd.extend(["-rw_timeout", "15000000"])
             cmd.extend(["-f", "flv", rtmp_url])
@@ -782,8 +1009,8 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
         end_youtube_broadcast(post_id)
 
         # Delete temporary files belonging to this post_id ONLY
-        for p in [temp_video_path, temp_combined_audio_path, temp_standard_audio_path, temp_stamp_path, temp_stamped_video_path]:
-            if os.path.exists(p):
+        for p in [temp_video_path, temp_combined_audio_path, temp_standard_audio_path, temp_stamp_path, temp_stamped_video_path, temp_intro_video_path]:
+            if p and os.path.exists(p):
                 try: os.remove(p)
                 except: pass
                 
