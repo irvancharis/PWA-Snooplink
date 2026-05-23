@@ -457,29 +457,6 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
         # This is extremely effective for fire, water, smoke, and ambient content, keeping flow forward naturally.
         if is_auto_loop:
             try:
-                # If a separate backsound audio path is active, mux it into the video first
-                # to create a single unified source file. This guarantees perfect A/V sync 
-                # and allows both video and audio tracks to crossfade at the exact same loop boundaries.
-                if combined_audio_path and os.path.exists(combined_audio_path):
-                    with stream_lock:
-                        if post_id in active_streams:
-                            active_streams[post_id]["logs"].append("[SYSTEM] Menggabungkan audio backsound ke dalam track video sebelum loop...")
-                    
-                    temp_muxed_path = f"/tmp/stream_muxed_{post_id}.mp4"
-                    mux_cmd = [
-                        "ffmpeg", "-y", "-i", temp_video_path, "-i", combined_audio_path,
-                        "-map", "0:v:0", "-map", "1:a:0",
-                        "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
-                        "-shortest", # Align to the shorter duration (the video)
-                        temp_muxed_path
-                    ]
-                    mux_res = subprocess.run(mux_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    if mux_res.returncode == 0:
-                        os.replace(temp_muxed_path, temp_video_path)
-                        combined_audio_path = None # Signal that audio is now pre-muxed!
-                        print("[SYSTEM] Audio backsound berhasil dimux ke video.")
-                    else:
-                        print(f"[SYSTEM] Gagal memux audio backsound: {mux_res.stderr.decode('utf-8', errors='ignore')}")
 
                 # Check video duration first
                 duration_check = subprocess.run(["ffmpeg", "-i", temp_video_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -882,29 +859,45 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
             has_audio = False
             
             if intro_video_path and os.path.exists(intro_video_path):
-                inputs = [
-                    "-re", "-i", intro_video_path,
-                    "-re", "-stream_loop", "-1", "-i", temp_video_path
-                ]
-                try:
-                    probe_audio = subprocess.run(["ffmpeg", "-i", temp_video_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                    has_audio = "Audio:" in probe_audio.stderr
-                except:
-                    pass
-                
-                if has_audio:
-                    filter_complex_arg = ["-filter_complex", "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[outv][outa]"]
-                    mapping = ["-map", "[outv]", "-map", "[outa]"]
-                else:
+                if combined_audio_path and os.path.exists(combined_audio_path):
+                    inputs = [
+                        "-re", "-i", intro_video_path,
+                        "-re", "-stream_loop", "-1", "-i", temp_video_path,
+                        "-re", "-stream_loop", "-1", "-i", combined_audio_path
+                    ]
                     filter_complex_arg = ["-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[outv]"]
-                    mapping = ["-map", "[outv]"]
+                    mapping = ["-map", "[outv]", "-map", "2:a:0"]
+                    has_audio = True
+                else:
+                    inputs = [
+                        "-re", "-i", intro_video_path,
+                        "-re", "-stream_loop", "-1", "-i", temp_video_path
+                    ]
+                    try:
+                        probe_audio = subprocess.run(["ffmpeg", "-i", temp_video_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                        has_audio = "Audio:" in probe_audio.stderr
+                    except:
+                        pass
+                    
+                    if has_audio:
+                        filter_complex_arg = ["-filter_complex", "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[outv][outa]"]
+                        mapping = ["-map", "[outv]", "-map", "[outa]"]
+                    else:
+                        filter_complex_arg = ["-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[outv]"]
+                        mapping = ["-map", "[outv]"]
             else:
                 inputs = ["-re", "-stream_loop", "-1", "-i", temp_video_path]
-                if combined_audio_path:
+                if combined_audio_path and os.path.exists(combined_audio_path):
                     inputs.extend(["-stream_loop", "-1", "-i", combined_audio_path])
                     mapping = ["-map", "0:v:0", "-map", "1:a:0"]
+                    has_audio = True
                 else:
                     mapping = ["-map", "0:v:0", "-map", "0:a?"]
+                    try:
+                        probe_audio = subprocess.run(["ffmpeg", "-i", temp_video_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                        has_audio = "Audio:" in probe_audio.stderr
+                    except:
+                        pass
       
             if bitrate == "copy":
                 bitrate = "3000k"
