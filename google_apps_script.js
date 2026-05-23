@@ -803,7 +803,7 @@ function createYouTubeLive(ytTitle, privacyStatus, token, description, tierLocat
     },
     contentDetails: {
       enableAutoStart: true,
-      enableAutoStop: true
+      enableAutoStop: false
     }
   };
 
