@@ -855,12 +855,24 @@ function createYouTubeLive(ytTitle, privacyStatus, token, description, tierLocat
           description: originalSnippet.description || description || "",
           categoryId: originalSnippet.categoryId || "22"
         };
-        if (originalSnippet.defaultLanguage) cleanSnippet.defaultLanguage = originalSnippet.defaultLanguage;
+        cleanSnippet.defaultLanguage = originalSnippet.defaultLanguage || "id";
         if (originalSnippet.defaultAudioLanguage) cleanSnippet.defaultAudioLanguage = originalSnippet.defaultAudioLanguage;
         
-        // Atur tags
+        // Atur tags (bersihkan karakter tidak valid dan batasi panjang total agar tidak ditolak API)
         if (ytTagsStr) {
-          cleanSnippet.tags = ytTagsStr.split(",").map(function (t) { return t.trim(); }).filter(function (t) { return t.length > 0; });
+          var cleanedTags = ytTagsStr.split(",")
+            .map(function (t) { return t.trim().replace(/[<>#]/g, ""); })
+            .filter(function (t) { return t.length > 0; });
+            
+          var totalLen = 0;
+          var safeTags = [];
+          for (var i = 0; i < cleanedTags.length; i++) {
+            if (totalLen + cleanedTags[i].length + 2 <= 400) {
+              safeTags.push(cleanedTags[i]);
+              totalLen += cleanedTags[i].length + 2;
+            }
+          }
+          cleanSnippet.tags = safeTags;
         } else if (originalSnippet.tags) {
           cleanSnippet.tags = originalSnippet.tags;
         }
@@ -1060,11 +1072,23 @@ function updateYouTubeLiveMetadata(broadcastId, token, title, description, tagsS
       description: description || "",
       categoryId: originalSnippet.categoryId || "22"
     };
-    if (originalSnippet.defaultLanguage) cleanSnippet.defaultLanguage = originalSnippet.defaultLanguage;
+    cleanSnippet.defaultLanguage = originalSnippet.defaultLanguage || "id";
     if (originalSnippet.defaultAudioLanguage) cleanSnippet.defaultAudioLanguage = originalSnippet.defaultAudioLanguage;
     
     if (tagsStr) {
-      cleanSnippet.tags = tagsStr.split(",").map(function (t) { return t.trim(); }).filter(function (t) { return t.length > 0; });
+      var cleanedTags = tagsStr.split(",")
+        .map(function (t) { return t.trim().replace(/[<>#]/g, ""); })
+        .filter(function (t) { return t.length > 0; });
+        
+      var totalLen = 0;
+      var safeTags = [];
+      for (var i = 0; i < cleanedTags.length; i++) {
+        if (totalLen + cleanedTags[i].length + 2 <= 400) {
+          safeTags.push(cleanedTags[i]);
+          totalLen += cleanedTags[i].length + 2;
+        }
+      }
+      cleanSnippet.tags = safeTags;
     }
     
     var cleanStatus = {

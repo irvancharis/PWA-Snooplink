@@ -188,7 +188,7 @@ const Dashboard = ({ posts: allPosts, onUseMedia, user, onViewAll }) => {
                             wordBreak: 'break-word',
                             marginTop: '0.2rem'
                           }}>
-                            ⚠️ Gagal update metadata YouTube (Tags/Altered Content) karena masalah izin. Silakan hubungkan ulang akun YouTube Anda dan centang opsi izin mengelola video.
+                            ⚠️ {post.ytMetadataWarning}
                           </div>
                         )}
                       </div>
