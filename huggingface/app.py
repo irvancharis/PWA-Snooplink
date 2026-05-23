@@ -497,17 +497,17 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                             "ffmpeg", "-y", "-i", temp_video_path,
                             "-filter_complex", 
                             f"[0:v]fps=30,format=yuv420p[v_cfr];"
-                            f"[v_cfr]split[v1_all][v2_all];"
-                            f"[v1_all]trim=start={main_start}:end={main_end},setpts=PTS-STARTPTS[vmain];"
-                            f"[v2_all]trim=start={main_end}:end={total_duration_sec},setpts=PTS-STARTPTS[vfadeout];"
-                            f"[v_cfr]trim=start=0:end={fade_dur},setpts=PTS-STARTPTS[vfadein];"
-                            f"[vfadeout][vfadein]xfade=transition=fade:duration={fade_dur}:offset=0[vjoin];"
+                            f"[v_cfr]split=3[v1][v2][v3];"
+                            f"[v1]trim=start={main_start}:end={main_end},setpts=PTS-STARTPTS,fps=30[vmain];"
+                            f"[v2]trim=start={main_end}:end={total_duration_sec},setpts=PTS-STARTPTS,fps=30[vfadeout];"
+                            f"[v3]trim=start=0:end={fade_dur},setpts=PTS-STARTPTS,fps=30[vfadein];"
+                            f"[vfadeout][vfadein]xfade=transition=fade:duration={fade_dur}:offset=0,fps=30[vjoin];"
                             f"[vmain][vjoin]concat=n=2:v=1:a=0[outv];"
                             f"[0:a]aresample=44100,aformat=channel_layouts=stereo[a_cfr];"
-                            f"[a_cfr]asplit[a1_all][a2_all];"
-                            f"[a1_all]atrim=start={main_start}:end={main_end},asetpts=PTS-STARTPTS[amain];"
-                            f"[a2_all]atrim=start={main_end}:end={total_duration_sec},asetpts=PTS-STARTPTS[afadeout];"
-                            f"[a_cfr]atrim=start=0:end={fade_dur},asetpts=PTS-STARTPTS[afadein];"
+                            f"[a_cfr]asplit=3[a1][a2][a3];"
+                            f"[a1]atrim=start={main_start}:end={main_end},asetpts=PTS-STARTPTS[amain];"
+                            f"[a2]atrim=start={main_end}:end={total_duration_sec},asetpts=PTS-STARTPTS[afadeout];"
+                            f"[a3]atrim=start=0:end={fade_dur},asetpts=PTS-STARTPTS[afadein];"
                             f"[afadeout][afadein]acrossfade=d={fade_dur}:c1=tri:c2=tri[ajoin];"
                             f"[amain][ajoin]concat=n=2:v=0:a=1[outa]",
                             "-map", "[outv]", "-map", "[outa]",
@@ -520,11 +520,11 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                             "ffmpeg", "-y", "-i", temp_video_path,
                             "-filter_complex", 
                             f"[0:v]fps=30,format=yuv420p[v_cfr];"
-                            f"[v_cfr]split[v1_all][v2_all];"
-                            f"[v1_all]trim=start={main_start}:end={main_end},setpts=PTS-STARTPTS[vmain];"
-                            f"[v2_all]trim=start={main_end}:end={total_duration_sec},setpts=PTS-STARTPTS[vfadeout];"
-                            f"[v_cfr]trim=start=0:end={fade_dur},setpts=PTS-STARTPTS[vfadein];"
-                            f"[vfadeout][vfadein]xfade=transition=fade:duration={fade_dur}:offset=0[vjoin];"
+                            f"[v_cfr]split=3[v1][v2][v3];"
+                            f"[v1]trim=start={main_start}:end={main_end},setpts=PTS-STARTPTS,fps=30[vmain];"
+                            f"[v2]trim=start={main_end}:end={total_duration_sec},setpts=PTS-STARTPTS,fps=30[vfadeout];"
+                            f"[v3]trim=start=0:end={fade_dur},setpts=PTS-STARTPTS,fps=30[vfadein];"
+                            f"[vfadeout][vfadein]xfade=transition=fade:duration={fade_dur}:offset=0,fps=30[vjoin];"
                             f"[vmain][vjoin]concat=n=2:v=1:a=0[outv]",
                             "-map", "[outv]",
                             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
