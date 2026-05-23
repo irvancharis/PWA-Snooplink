@@ -438,31 +438,52 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                 try: os.remove(temp_stamp_path)
                 except: pass
                 
-        # 2.5. If auto loop is enabled, preprocess the video to make it a seamless mirror loop (Forward + Reverse)
-        # This is extremely effective for fire, water, smoke, and ambient content.
+        # 2.5. If auto loop is enabled, preprocess the video to make it a seamless crossfade loop (Video Dissolve)
+        # This is extremely effective for fire, water, smoke, and ambient content, keeping flow forward naturally.
         if is_auto_loop:
             try:
                 # Check video duration first
                 duration_check = subprocess.run(["ffmpeg", "-i", temp_video_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                duration_match = re.search(r"Duration:\s*(\d+):(\d+):(\d+)", duration_check.stderr)
+                duration_match = re.search(r"Duration:\s*(\d+):(\d+):(\d+\.\d+|\d+)", duration_check.stderr)
                 is_short_video = False
+                total_duration_sec = 0.0
                 if duration_match:
-                    hours, minutes, seconds = map(int, duration_match.groups())
-                    total_duration_sec = hours * 3600 + minutes * 60 + seconds
-                    is_short_video = total_duration_sec <= 600  # Only preprocess videos under 10 minutes to prevent timeouts
+                    hours, minutes, seconds = duration_match.groups()
+                    total_duration_sec = int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+                    is_short_video = 5.0 <= total_duration_sec <= 600  # Safe between 5 seconds and 10 minutes
                     
                 if is_short_video:
                     with stream_lock:
                         if post_id in active_streams:
-                            active_streams[post_id]["logs"].append("[SYSTEM] Membuat loop siaran menjadi seamless (Mirror Loop)...")
+                            active_streams[post_id]["logs"].append("[SYSTEM] Membuat loop siaran menjadi seamless (Crossfade Loop)...")
                             
                     temp_seamless_path = f"/tmp/stream_input_seamless_{post_id}.mp4"
                     
-                    # Preprocess using FFmpeg: Concatenate video forward + backward, and duplicate audio forward + forward
+                    # 2-second crossfade duration
+                    fade_dur = 2.0
+                    if total_duration_sec < 10.0:
+                        fade_dur = 1.0  # Use 1 second for very short videos
+                        
+                    main_start = fade_dur
+                    main_end = total_duration_sec - fade_dur
+                    
+                    # Construct FFmpeg command using xfade (video) and acrossfade (audio)
                     if "Audio:" in duration_check.stderr:
                         seamless_cmd = [
                             "ffmpeg", "-y", "-i", temp_video_path,
-                            "-filter_complex", "[0:v]reverse[revv];[0:v][revv]concat=n=2:v=1:a=0[outv];[0:a][0:a]concat=n=2:v=0:a=1[outa]",
+                            "-filter_complex", 
+                            f"[0:v]split[v1][v2];"
+                            f"[v1]trim=start={main_start}:end={main_end},setpts=PTS-STARTPTS[vmain];"
+                            f"[v2]trim=start={main_end}:end={total_duration_sec},setpts=PTS-STARTPTS[vfadeout];"
+                            f"[0:v]trim=start=0:end={fade_dur},setpts=PTS-STARTPTS[vfadein];"
+                            f"[vfadeout][vfadein]xfade=transition=fade:duration={fade_dur}:offset=0[vjoin];"
+                            f"[vmain][vjoin]concat=n=2:v=1:a=0[outv];"
+                            f"[0:a]asplit[a1][a2];"
+                            f"[a1]atrim=start={main_start}:end={main_end},asetpts=PTS-STARTPTS[amain];"
+                            f"[a2]atrim=start={main_end}:end={total_duration_sec},asetpts=PTS-STARTPTS[afadeout];"
+                            f"[0:a]atrim=start=0:end={fade_dur},asetpts=PTS-STARTPTS[afadein];"
+                            f"[afadeout][afadein]acrossfade=d={fade_dur}:c1=tri:c2=tri[ajoin];"
+                            f"[amain][ajoin]concat=n=2:v=0:a=1[outa]",
                             "-map", "[outv]", "-map", "[outa]",
                             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
                             "-c:a", "aac", "-b:a", "128k",
@@ -471,7 +492,13 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                     else:
                         seamless_cmd = [
                             "ffmpeg", "-y", "-i", temp_video_path,
-                            "-filter_complex", "[0:v]reverse[revv];[0:v][revv]concat=n=2:v=1:a=0[outv]",
+                            "-filter_complex", 
+                            f"[0:v]split[v1][v2];"
+                            f"[v1]trim=start={main_start}:end={main_end},setpts=PTS-STARTPTS[vmain];"
+                            f"[v2]trim=start={main_end}:end={total_duration_sec},setpts=PTS-STARTPTS[vfadeout];"
+                            f"[0:v]trim=start=0:end={fade_dur},setpts=PTS-STARTPTS[vfadein];"
+                            f"[vfadeout][vfadein]xfade=transition=fade:duration={fade_dur}:offset=0[vjoin];"
+                            f"[vmain][vjoin]concat=n=2:v=1:a=0[outv]",
                             "-map", "[outv]",
                             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
                             temp_seamless_path
@@ -482,14 +509,14 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                         os.replace(temp_seamless_path, temp_video_path)
                         with stream_lock:
                             if post_id in active_streams:
-                                active_streams[post_id]["logs"].append("[SYSTEM] Loop video seamless (Mirror Loop) berhasil diterapkan!")
+                                active_streams[post_id]["logs"].append("[SYSTEM] Loop video seamless (Crossfade Loop) berhasil diterapkan!")
                     else:
                         print(f"[SYSTEM] Gagal membuat loop seamless: {res.stderr.decode('utf-8', errors='ignore')}")
                         with stream_lock:
                             if post_id in active_streams:
                                 active_streams[post_id]["logs"].append("[SYSTEM] Warning: Gagal membuat loop seamless. Menggunakan loop standar...")
                 else:
-                    print("[SYSTEM] Video durasinya > 10 menit, menggunakan loop standar untuk menghemat resource.")
+                    print("[SYSTEM] Video durasi di luar rentang loop (5s - 10m), menggunakan loop standar.")
             except Exception as le:
                 print(f"[SYSTEM] Error creating seamless loop: {le}")
         
