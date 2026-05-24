@@ -237,10 +237,9 @@ function updateFirestoreFields(docId, updates, fieldPaths) {
 
 function resolveRandomMedia(userId, category, count) {
   try {
-    const allMedia = getFirestoreData("media");
-    const filtered = allMedia.filter(m => {
-      return m.fields?.userId?.stringValue === userId && 
-             m.fields?.category?.stringValue === category;
+    const userMedia = getMediaByUserIdFromFirestore(userId);
+    const filtered = userMedia.filter(m => {
+      return m.fields?.category?.stringValue === category;
     });
 
     if (filtered.length === 0) {
@@ -555,17 +554,12 @@ function executePost(post, postId) {
         const userId = post.fields.userId?.stringValue;
         console.log("Mencari server streaming untuk user ID: " + userId);
         
-        let allNodes = [];
+        let userNodes = [];
         try {
-          allNodes = getFirestoreData("streaming_nodes");
+          userNodes = getStreamingNodesByUserIdFromFirestore(userId);
         } catch (e) {
           console.log("Gagal membaca koleksi streaming_nodes: " + e.message);
         }
-  
-        // Filter node berdasarkan userId pembuat postingan
-        const userNodes = allNodes.filter(function(node) {
-          return node.fields && node.fields.userId?.stringValue === userId;
-        });
   
         console.log("Ditemukan " + userNodes.length + " server terdaftar.");
   
@@ -1756,6 +1750,80 @@ function getScheduledPostsFromFirestore() {
     });
   }
   return posts;
+}
+
+function getMediaByUserIdFromFirestore(userId) {
+  const token = getAccessToken();
+  const url = `https://firestore.googleapis.com/v1/projects/${FB_CONFIG.project_id}/databases/(default)/documents:runQuery`;
+  
+  const queryPayload = {
+    structuredQuery: {
+      from: [{ collectionId: "media" }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: "userId" },
+          op: "EQUAL",
+          value: { stringValue: userId }
+        }
+      }
+    }
+  };
+  
+  const res = UrlFetchApp.fetch(url, {
+    method: "POST",
+    contentType: "application/json",
+    headers: { Authorization: "Bearer " + token },
+    payload: JSON.stringify(queryPayload),
+    muteHttpExceptions: true
+  });
+  
+  const results = JSON.parse(res.getContentText());
+  const media = [];
+  if (Array.isArray(results)) {
+    results.forEach(function(result) {
+      if (result.document) {
+        media.push(result.document);
+      }
+    });
+  }
+  return media;
+}
+
+function getStreamingNodesByUserIdFromFirestore(userId) {
+  const token = getAccessToken();
+  const url = `https://firestore.googleapis.com/v1/projects/${FB_CONFIG.project_id}/databases/(default)/documents:runQuery`;
+  
+  const queryPayload = {
+    structuredQuery: {
+      from: [{ collectionId: "streaming_nodes" }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: "userId" },
+          op: "EQUAL",
+          value: { stringValue: userId }
+        }
+      }
+    }
+  };
+  
+  const res = UrlFetchApp.fetch(url, {
+    method: "POST",
+    contentType: "application/json",
+    headers: { Authorization: "Bearer " + token },
+    payload: JSON.stringify(queryPayload),
+    muteHttpExceptions: true
+  });
+  
+  const results = JSON.parse(res.getContentText());
+  const nodes = [];
+  if (Array.isArray(results)) {
+    results.forEach(function(result) {
+      if (result.document) {
+        nodes.push(result.document);
+      }
+    });
+  }
+  return nodes;
 }
 
 function getFirestoreData(collection) {
