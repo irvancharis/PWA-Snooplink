@@ -549,6 +549,22 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                     intro_text = post_data.get('introText', None)
                     if intro_text and intro_text.strip():
                         intro_text = intro_text.strip()
+                        
+                        # Pengacakan teks intro multi-opsi (dipisahkan oleh '===' atau baris kosong ganda '\n\n')
+                        import random
+                        intro_options = []
+                        if "===" in intro_text:
+                            intro_options = [opt.strip() for opt in intro_text.split("===") if opt.strip()]
+                        elif "\n\n" in intro_text:
+                            # Memisahkan jika ada baris kosong ganda
+                            intro_options = [opt.strip() for opt in intro_text.split("\n\n") if opt.strip()]
+                        else:
+                            intro_options = [intro_text]
+                            
+                        if len(intro_options) > 1:
+                            intro_text = random.choice(intro_options)
+                            print(f"[SYSTEM] Memilih intro acak dari {len(intro_options)} pilihan: {intro_text}")
+                            
                         with stream_lock:
                             if post_id in active_streams:
                                 active_streams[post_id]["logs"].append(f"[SYSTEM] Menyiapkan intro teks ketik (Typewriter Intro): \"{intro_text}\"...")

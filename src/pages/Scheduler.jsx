@@ -1212,12 +1212,12 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
 
                   <div className="input-group">
                     <label className="stat-label" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <span>Teks Intro Ketik (Opsional)</span>
-                      <Info size={14} style={{ color: 'var(--text-muted)' }} title="Teks sambutan bergaya mesin ketik premium yang akan muncul di atas video selama 20 detik pertama siaran langsung." />
+                      <span>Teks Intro Ketik (Opsional - Bisa Lebih dari 1 & Diacak)</span>
+                      <Info size={14} style={{ color: 'var(--text-muted)' }} title="Teks sambutan bergaya mesin ketik premium selama 20 detik pertama. Anda bisa memasukkan beberapa pilihan teks intro agar diacak sistem untuk setiap sesi siaran." />
                     </label>
                     <textarea 
-                      rows={2} 
-                      placeholder="Masukkan teks sambutan... (Gunakan \n untuk baris baru. Contoh: Welcome to Snoozeland...\nRelax, breathe, and enjoy the nature...)"
+                      rows={4} 
+                      placeholder="Masukkan teks sambutan. Anda bisa memasukkan beberapa alternatif pilihan agar diacak sistem.&#10;&#10;Contoh (Pisahkan pilihan dengan baris kosong ganda):&#10;Welcome to Snoozeland...&#10;Relax, breathe, and enjoy the nature...&#10;&#10;Halo dari Snoozeland...&#10;Selamat menikmati suasana alam yang indah..."
                       style={{ marginTop: '0.5rem', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0.75rem 1rem', fontFamily: 'inherit', resize: 'vertical' }}
                       value={introText}
                       onChange={(e) => setIntroText(e.target.value)}
