@@ -873,7 +873,7 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                                     except: pass
                         break
                 
-                time.sleep(10)
+                time.sleep(60)
                 
         watchdog_thread = threading.Thread(target=watchdog_loop, daemon=True)
         watchdog_thread.start()
