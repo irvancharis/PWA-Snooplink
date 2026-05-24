@@ -798,8 +798,6 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
             except ValueError:
                 interval_mins = 60  # Default to 60 minutes if duration is 24/7 or invalid
                 
-            last_update = datetime.now()
-            
             while True:
                 # Terminate watchdog thread if the stream goes inactive
                 with stream_lock:
@@ -808,15 +806,50 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                         break
                         
                 # If Auto Loop is enabled, we perform periodic dynamic metadata updates (Method 1 - Seamless)
-                if is_auto_loop:
-                    elapsed_from_last_update = (datetime.now() - last_update).total_seconds()
-                    if elapsed_from_last_update >= (interval_mins * 60):
-                        print(f"[WATCHDOG] Time for metadata update. Interval: {interval_mins} mins. Triggering update...")
-                        last_update = datetime.now()
-                        with stream_lock:
-                            if post_id in active_streams:
-                                active_streams[post_id]["logs"].append("[SYSTEM] [WATCHDOG] Waktunya memperbarui metadata. Memicu update metadata dinamis...")
-                        update_live_metadata(post_id)
+                if is_auto_loop and db:
+                    try:
+                        post_doc = db.collection('posts').document(post_id).get()
+                        if post_doc.exists:
+                            post_data = post_doc.to_dict() or {}
+                            
+                            # Membaca lastMetaUpdate dari Firestore secara persisten untuk kebal terhadap reboot kontainer/RAM
+                            last_meta_update = post_data.get('lastMetaUpdate')
+                            should_update = False
+                            
+                            import datetime as dt
+                            now_dt = dt.datetime.now(dt.timezone.utc)
+                            
+                            if not last_meta_update:
+                                should_update = True
+                            else:
+                                # Jika itu datetime object dari Firestore
+                                if hasattr(last_meta_update, 'timestamp'):
+                                    last_dt = last_meta_update
+                                else:
+                                    # Fallback jika timestamp numerik
+                                    try:
+                                        last_dt = dt.datetime.fromtimestamp(float(last_meta_update), dt.timezone.utc)
+                                    except:
+                                        last_dt = now_dt
+                                
+                                elapsed_sec = (now_dt - last_dt).total_seconds()
+                                if elapsed_sec >= (interval_mins * 60):
+                                    should_update = True
+                                    print(f"[WATCHDOG] Waktunya update metadata. Selisih: {elapsed_sec:.1f} detik, Target: {interval_mins * 60} detik. Memicu...")
+                            
+                            if should_update:
+                                with stream_lock:
+                                    if post_id in active_streams:
+                                        active_streams[post_id]["logs"].append("[SYSTEM] [WATCHDOG] Waktunya memperbarui metadata. Memicu update metadata dinamis...")
+                                
+                                # Update lastMetaUpdate di Firestore terlebih dahulu untuk mencegah double-trigger
+                                db.collection('posts').document(post_id).update({
+                                    'lastMetaUpdate': firestore.SERVER_TIMESTAMP
+                                })
+                                
+                                update_live_metadata(post_id)
+                    except Exception as we:
+                        print(f"[WATCHDOG] Gagal memeriksa metadata di Firestore: {we}")
                 
                 # If NOT auto loop, stop stream when duration ends
                 elif duration != "24/7":
