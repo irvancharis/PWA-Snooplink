@@ -60,7 +60,7 @@ function autoCheckAndPost() {
 
     console.log("Pengecekan jadwal GMT+7: " + currentMinuteString + " (" + gmt7DayString + ")");
 
-    const posts = getFirestoreData("posts");
+    const posts = getScheduledPostsFromFirestore();
 
     // BACA URL SECARA DINAMIS DARI FIRESTORE
     var webAppUrl = getWebAppUrlFromFirestore();
@@ -1721,6 +1721,43 @@ function doGet(e) {
 // ==========================================
 // 4. INTERNAL FIRESTORE HELPERS
 // ==========================================
+function getScheduledPostsFromFirestore() {
+  const token = getAccessToken();
+  const url = `https://firestore.googleapis.com/v1/projects/${FB_CONFIG.project_id}/databases/(default)/documents:runQuery`;
+  
+  const queryPayload = {
+    structuredQuery: {
+      from: [{ collectionId: "posts" }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: "status" },
+          op: "EQUAL",
+          value: { stringValue: "Scheduled" }
+        }
+      }
+    }
+  };
+  
+  const res = UrlFetchApp.fetch(url, {
+    method: "POST",
+    contentType: "application/json",
+    headers: { Authorization: "Bearer " + token },
+    payload: JSON.stringify(queryPayload),
+    muteHttpExceptions: true
+  });
+  
+  const results = JSON.parse(res.getContentText());
+  const posts = [];
+  if (Array.isArray(results)) {
+    results.forEach(function(result) {
+      if (result.document) {
+        posts.push(result.document);
+      }
+    });
+  }
+  return posts;
+}
+
 function getFirestoreData(collection) {
   const token = getAccessToken();
   const url = `https://firestore.googleapis.com/v1/projects/${FB_CONFIG.project_id}/databases/(default)/documents/${collection}`;
