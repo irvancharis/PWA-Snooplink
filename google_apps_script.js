@@ -15,11 +15,11 @@ const YT_CONFIG = {
   client_secret: "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"
 };
 
-function getFreshYouTubeToken(refreshToken) {
+function getFreshYouTubeToken(refreshToken, clientId, clientSecret) {
   const url = "https://oauth2.googleapis.com/token";
   const payload = {
-    client_id: YT_CONFIG.client_id,
-    client_secret: YT_CONFIG.client_secret,
+    client_id: clientId || YT_CONFIG.client_id,
+    client_secret: clientSecret || YT_CONFIG.client_secret,
     refresh_token: refreshToken,
     grant_type: "refresh_token"
   };
@@ -94,13 +94,28 @@ function autoCheckAndPost() {
               // 1. Catat execution minute agar tidak dobel trigger
               updateFirestoreLastExecuted(postId, currentMinuteString);
 
-              // 2. Buat dokumen copy execution post
+              // 2. Baca loopIteration saat ini dan hitung iterasi berikutnya
+              var currentIter = 1;
+              if (post.fields.loopIteration) {
+                currentIter = parseInt(post.fields.loopIteration.integerValue || post.fields.loopIteration.doubleValue || 1, 10);
+              }
+              var nextIter = currentIter + 1;
+
+              // 3. Update parent post loopIteration di Firestore agar run berikutnya nilainya naik
+              try {
+                updateFirestoreFields(postId, { loopIteration: { integerValue: nextIter.toString() } }, ["loopIteration"]);
+              } catch (iterErr) {
+                console.error("Gagal menaikkan loopIteration pada parent post: " + iterErr.message);
+              }
+
+              // 4. Buat dokumen copy execution post
               var execFields = JSON.parse(JSON.stringify(post.fields));
               
               // Modifikasi field untuk execution copy
               execFields.isRecurring = { booleanValue: false };
               execFields.status = { stringValue: "Processing" };
               execFields.time = { stringValue: currentMinuteString };
+              execFields.loopIteration = { integerValue: currentIter.toString() };
 
               // Clear resolved values if random mode is active to force re-evaluation in executePost
               if (execFields.randomVideo?.booleanValue) {
@@ -279,6 +294,7 @@ const HF_SPACE_URL = "https://irvancharis-live1.hf.space";
 function executePost(post, postId) {
   console.log("=== MEMULAI EKSEKUSI POST ===");
   console.log("ID Postingan: " + postId);
+  var shouldSetPublished = true;
 
   // 1. RESOLVE RANDOM MEDIA, THUMBNAILS, & SPINTAX
   const userId = post.fields.userId?.stringValue || "";
@@ -468,17 +484,26 @@ function executePost(post, postId) {
         // Untuk Live Stream di YouTube, kita menggunakan API localizations resmi (tetap simpan judul asli di db).
         // Untuk postingan biasa (Facebook, Instagram, dan Video YouTube non-live), kita translate in-place.
         if (postType !== "live" || platform !== "youtube") {
+          var transUpdates = {};
+          var transPaths = [];
           if (ytTitle) {
             ytTitle = LanguageApp.translate(ytTitle, '', targetLang);
             if (!post.fields.ytTitle) post.fields.ytTitle = {};
             post.fields.ytTitle.stringValue = ytTitle;
+            transUpdates.ytTitle = { stringValue: ytTitle };
+            transPaths.push("ytTitle");
             console.log("Translated Title: " + ytTitle);
           }
           if (content) {
             content = LanguageApp.translate(content, '', targetLang);
             if (!post.fields.content) post.fields.content = {};
             post.fields.content.stringValue = content;
+            transUpdates.content = { stringValue: content };
+            transPaths.push("content");
             console.log("Translated Content: " + content);
+          }
+          if (transPaths.length > 0) {
+            updateFirestoreFields(postId, transUpdates, transPaths);
           }
         }
       } catch (transError) {
@@ -505,7 +530,9 @@ function executePost(post, postId) {
 
       let freshToken = token;
       if (platform === "youtube") {
-        freshToken = getFreshYouTubeToken(token);
+        const customClientId = account.fields.ytClientId?.stringValue || null;
+        const customClientSecret = account.fields.ytClientSecret?.stringValue || null;
+        freshToken = getFreshYouTubeToken(token, customClientId, customClientSecret);
         if (streamKeyMode === "auto") {
           console.log("YouTube Stream Key Mode = AUTO. Membuat Live Broadcast...");
           // Kirim parameter tambahan untuk penanganan terjemahan dan tags
@@ -716,6 +743,7 @@ function executePost(post, postId) {
 
       result = "Live streaming berhasil dipicu di " + selectedSpaceUrl + ": " + responseText;
       console.log(result);
+      shouldSetPublished = false;
 
     } else {
       // ----------------------------------------------------
@@ -730,15 +758,85 @@ function executePost(post, postId) {
       } else if (platform === "instagram") {
         result = postToInstagram(pageId, token, content, mediaUrl);
       } else if (platform === "youtube") {
-        const freshToken = getFreshYouTubeToken(token);
-        result = postToYouTube(freshToken, post);
+        const isGenerate = post.fields.isGenerateVideo?.booleanValue || post.fields.randomVideo?.booleanValue;
+        if (isGenerate) {
+          // JALUR GENERATE VIDEO UTAMA VIA HUGGING FACE
+          let selectedSpaceUrl = account.fields.liveServerUrl?.stringValue || null;
+          if (!selectedSpaceUrl) {
+            const userId = post.fields.userId?.stringValue;
+            let userNodes = [];
+            try {
+              userNodes = getStreamingNodesByUserIdFromFirestore(userId);
+            } catch (e) {}
+            
+            const targetAccountId = post.fields.accountId?.stringValue;
+            let accountMatchedNode = null;
+            if (targetAccountId && userNodes.length > 0) {
+              accountMatchedNode = userNodes.find(function(node) {
+                return node.fields && node.fields.accountId?.stringValue === targetAccountId;
+              });
+            }
+            if (accountMatchedNode) {
+              selectedSpaceUrl = accountMatchedNode.fields.url?.stringValue || "";
+            } else if (userNodes.length === 0) {
+              selectedSpaceUrl = HF_SPACE_URL;
+            } else {
+              selectedSpaceUrl = userNodes[0].fields.url?.stringValue || HF_SPACE_URL;
+            }
+          }
+          
+          if (selectedSpaceUrl) {
+            selectedSpaceUrl = selectedSpaceUrl.replace(/\/$/, "");
+          }
+          
+          updateFirestoreStatus(postId, "Processing", "Menghubungkan ke server rendering video...");
+          
+          console.log("Mengirim trigger generate & upload ke server: " + selectedSpaceUrl);
+          const response = UrlFetchApp.fetch(selectedSpaceUrl + "/generate_post?postId=" + postId + "&secret=" + HF_SECRET, {
+            method: "POST",
+            muteHttpExceptions: true,
+            timeoutInSeconds: 30
+          });
+          
+          const responseText = response.getContentText();
+          console.log("Respon Server: " + responseText);
+          
+          if (responseText.trim().indexOf("<") === 0) {
+            throw new Error("Server generate video sedang tidur atau mengalami error. Silakan buka Space Anda secara manual di Hugging Face.");
+          }
+          
+          var resJson = JSON.parse(responseText);
+          if (resJson.status === "error") {
+            throw new Error("Gagal di Server Generate: " + resJson.message);
+          }
+          
+          result = "Proses rendering video berhasil dipicu di " + selectedSpaceUrl;
+          console.log(result);
+          shouldSetPublished = false;
+        } else {
+          const customClientId = account.fields.ytClientId?.stringValue || null;
+          const customClientSecret = account.fields.ytClientSecret?.stringValue || null;
+          const freshToken = getFreshYouTubeToken(token, customClientId, customClientSecret);
+          result = postToYouTube(freshToken, post);
+          if (result && result.indexOf("ID: ") !== -1) {
+            const videoId = result.split("ID: ")[1].trim();
+            const videoUrl = "https://www.youtube.com/watch?v=" + videoId;
+            updateFirestoreFields(postId, {
+              url: { stringValue: videoUrl }
+            }, ["url"]);
+          }
+        }
       } else {
         console.log("Platform " + platform + " belum didukung otomatis.");
         return;
       }
 
       console.log("Berhasil Posting! Respon: " + result);
-      updateFirestoreStatus(postId, "Published", ""); // Hapus log error jika berhasil
+      if (shouldSetPublished) {
+        updateFirestoreStatus(postId, "Published", "");
+      } else {
+        updateFirestoreStatus(postId, "Processing", "Hugging Face: Proses rendering video di server cloud dimulai...");
+      }
     }
 
   } catch (err) {
@@ -1524,7 +1622,9 @@ function doPost(e) {
         throw new Error("Refresh token YouTube tidak ditemukan.");
       }
       
-      var freshToken = getFreshYouTubeToken(refreshToken);
+      var customClientId = account.fields.ytClientId?.stringValue || null;
+      var customClientSecret = account.fields.ytClientSecret?.stringValue || null;
+      var freshToken = getFreshYouTubeToken(refreshToken, customClientId, customClientSecret);
       
       // Hitung dan update nomor iterasi berikutnya
       var currentIteration = 1;

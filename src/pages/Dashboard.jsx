@@ -1,9 +1,56 @@
 import React, { useState } from 'react';
-import { Image as ImageIcon, Video, FileImage, X, RefreshCw, TrendingUp, Calendar, Zap, Sliders, CheckCircle2, Repeat } from 'lucide-react';
+import { Image as ImageIcon, Video, FileImage, X, RefreshCw, TrendingUp, Calendar, Zap, Sliders, CheckCircle2, Repeat, ExternalLink, Square } from 'lucide-react';
 
-const Dashboard = ({ posts: allPosts, onUseMedia, user, onViewAll }) => {
+const Dashboard = ({ posts: allPosts, accounts = [], onUpdate, onUseMedia, user, onViewAll }) => {
   const posts = allPosts.filter(p => p.status !== 'Deleted');
   const [selectedPost, setSelectedPost] = useState(null);
+  const [stoppingIds, setStoppingIds] = useState({});
+
+  const handleStopLive = async (post) => {
+    if (!window.confirm("Apakah Anda yakin ingin menghentikan siaran live ini secara paksa?")) return;
+    
+    setStoppingIds(prev => ({ ...prev, [post.id]: true }));
+    try {
+      const account = accounts.find(a => a.id === post.accountId);
+      let serverUrl = account?.liveServerUrl || "https://irvancharis-live1.hf.space";
+      serverUrl = serverUrl.replace(/\/$/, "");
+      
+      const HF_SECRET = 'SnooplinkSuperSecret123';
+      
+      const stopUrl = `${serverUrl}/stop_stream?postId=${post.id}&secret=${HF_SECRET}`;
+      console.log("Triggering stop live:", stopUrl);
+      
+      const res = await fetch(stopUrl, {
+        method: 'POST'
+      });
+      
+      const resData = await res.json();
+      if (resData.status === 'success' || res.ok) {
+        alert("Sinyal penghentian siaran live berhasil dikirim ke server.");
+        if (onUpdate) {
+          await onUpdate(post.id, { 
+            status: 'Failed',
+            error_log: 'Siaran dihentikan secara manual oleh pengguna dari Dashboard.'
+          });
+        }
+      } else {
+        throw new Error(resData.message || "Gagal menghubungi server live.");
+      }
+    } catch (err) {
+      console.error(err);
+      if (window.confirm("Gagal menghubungi server live. Apakah Anda ingin menghentikan paksa status di database Firestore saja?")) {
+        if (onUpdate) {
+          await onUpdate(post.id, {
+            status: 'Failed',
+            error_log: 'Siaran dihentikan paksa oleh pengguna di database (Server offline).'
+          });
+        }
+      }
+    } finally {
+      setStoppingIds(prev => ({ ...prev, [post.id]: false }));
+      setSelectedPost(null);
+    }
+  };
 
   const isVideo = (post) => {
     if (post.mediaType?.startsWith('video/')) return true;
@@ -230,6 +277,31 @@ const Dashboard = ({ posts: allPosts, onUseMedia, user, onViewAll }) => {
                   <div style={{ color: '#fff', fontSize: '0.8rem', opacity: 0.7, textAlign: 'center', marginTop: '0.5rem' }}>
                     Jika video tidak muncul, Google Drive mungkin masih memproses file Anda.
                   </div>
+                  {selectedPost.url && (
+                    <a 
+                      href={selectedPost.url} 
+                      target="_blank" 
+                      rel="noreferrer"
+                      className="btn"
+                      style={{ 
+                        background: selectedPost.url.includes('localhost') ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #ef4444, #dc2626)', 
+                        color: '#fff', 
+                        border: 'none', 
+                        fontSize: '0.85rem', 
+                        marginTop: '0.5rem', 
+                        padding: '0.6rem 1.2rem',
+                        fontWeight: 'bold',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                        textDecoration: 'none'
+                      }}
+                    >
+                      {selectedPost.url.includes('localhost') ? '🚀 Tonton Video Hasil Render' : '📺 Tonton di YouTube'}
+                      <ExternalLink size={14} />
+                    </a>
+                  )}
                 </div>
               ) : (
                 <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
@@ -321,19 +393,43 @@ const Dashboard = ({ posts: allPosts, onUseMedia, user, onViewAll }) => {
                     </div>
                   )}
                 </div>
-                {onUseMedia && (
-                  <button 
-                    className="btn btn-primary"
-                    onClick={() => {
-                      onUseMedia(selectedPost.mediaUrl);
-                      setSelectedPost(null);
-                    }}
-                    style={{ alignSelf: 'flex-start' }}
-                  >
-                    <RefreshCw size={18} />
-                    <span>Gunakan Lagi</span>
-                  </button>
-                )}
+                <div style={{ display: 'flex', gap: '0.5rem', alignSelf: 'flex-start' }}>
+                  {selectedPost.postType === 'live' && (selectedPost.status === 'LIVE' || selectedPost.status === 'Processing') && (
+                    <button 
+                      className="btn"
+                      onClick={() => handleStopLive(selectedPost)}
+                      disabled={stoppingIds[selectedPost.id]}
+                      style={{ 
+                        background: 'linear-gradient(135deg, #ef4444, #dc2626)', 
+                        color: '#fff', 
+                        border: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        padding: '0.6rem 1.2rem',
+                        borderRadius: '12px',
+                        fontWeight: 'bold',
+                        boxShadow: '0 4px 12px rgba(239, 68, 68, 0.2)',
+                        cursor: stoppingIds[selectedPost.id] ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      <Square size={16} fill="#fff" />
+                      <span>{stoppingIds[selectedPost.id] ? 'Menghentikan...' : 'Hentikan Live'}</span>
+                    </button>
+                  )}
+                  {onUseMedia && (
+                    <button 
+                      className="btn btn-primary"
+                      onClick={() => {
+                        onUseMedia(selectedPost.mediaUrl);
+                        setSelectedPost(null);
+                      }}
+                    >
+                      <RefreshCw size={18} />
+                      <span>Gunakan Lagi</span>
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>

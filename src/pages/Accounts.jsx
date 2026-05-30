@@ -67,16 +67,22 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
 
 
   const handleGoogleLogin = (reconnectAcc = null) => {
-    const clientId = [
+    const customId = reconnectAcc?.ytClientId || formData.ytClientId || '';
+    const customSecret = reconnectAcc?.ytClientSecret || formData.ytClientSecret || '';
+
+    const defaultClientId = [
       "687270813688-",
       "8fsdi9hsnjrv8jvna051acs7ofiuk0uo",
       ".apps.googleusercontent.com"
     ].join("");
-    const clientSecret = [
+    const defaultClientSecret = [
       "GOCSPX-",
       "JWzHu1RjPJdsOniJB2q",
       "1QgkSatk3"
     ].join("");
+
+    const clientId = customId ? customId.trim() : defaultClientId;
+    const clientSecret = customSecret ? customSecret.trim() : defaultClientSecret;
     const redirectUri = window.location.origin;
 
     const oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` + 
@@ -507,8 +513,33 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
                     </div>
 
                     {formData.platform === 'youtube' ? (
-                      <div className="input-group" style={{ marginBottom: 0, textAlign: 'center' }}>
-                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                      <div className="input-group" style={{ marginBottom: 0 }}>
+                        <div style={{ background: '#fff', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '1.5rem', textAlign: 'left' }}>
+                          <label className="stat-label" style={{ fontSize: '0.75rem', color: 'var(--primary)', fontWeight: 800 }}>OAuth Client ID Kustom (Opsional)</label>
+                          <input 
+                            type="text" 
+                            placeholder="Client ID dari GCP Console..." 
+                            value={formData.ytClientId || ''} 
+                            onChange={e => setFormData({...formData, ytClientId: e.target.value})} 
+                            style={{ width: '100%', marginTop: '0.3rem', background: '#fff', border: '1px solid #cbd5e1' }} 
+                          />
+                          
+                          <label className="stat-label" style={{ fontSize: '0.75rem', color: 'var(--primary)', fontWeight: 800, display: 'block', marginTop: '1rem' }}>OAuth Client Secret Kustom (Opsional)</label>
+                          <input 
+                            type="text" 
+                            placeholder="Client Secret dari GCP Console..." 
+                            value={formData.ytClientSecret || ''} 
+                            onChange={e => setFormData({...formData, ytClientSecret: e.target.value})} 
+                            style={{ width: '100%', marginTop: '0.3rem', background: '#fff', border: '1px solid #cbd5e1' }} 
+                          />
+                          
+                          <small style={{ display: 'block', marginTop: '0.8rem', fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+                            ⚠️ <strong>PANDUAN REDIRECT URI:</strong> Pastikan Anda telah menambahkan URL redirect resmi berikut ke Authorized Redirect URIs pada GCP OAuth Credentials Anda:<br/>
+                            <code style={{ background: '#f1f5f9', padding: '0.2rem 0.4rem', borderRadius: '6px', display: 'inline-block', marginTop: '0.3rem', userSelect: 'all', fontSize: '0.72rem', border: '1px solid #e2e8f0', fontWeight: 'bold' }}>{window.location.origin}</code>
+                          </small>
+                        </div>
+
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.2rem', textAlign: 'center' }}>
                           Snooplink membutuhkan izin akses untuk mengunggah video ke YouTube Channel Anda.
                         </p>
                         <button 

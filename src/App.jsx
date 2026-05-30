@@ -95,7 +95,22 @@ function App() {
     const q = query(collection(db, 'posts'), where('userId', '==', user.id));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const postsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setPosts(postsData.sort((a, b) => b.createdAt?.seconds - a.createdAt?.seconds));
+      setPosts(postsData.sort((a, b) => {
+        const getPrio = (p) => {
+          const s = p.status?.toUpperCase();
+          if (s === 'SCHEDULED') return 1;
+          if (s === 'LIVE') return 2;
+          if (s === 'PROCESSING') return 3;
+          if (s === 'PUBLISHED') return 4;
+          if (s === 'COMPLETED' || s === 'COMPLETE') return 5;
+          if (s === 'FAILED') return 6;
+          return 7;
+        };
+        const prioA = getPrio(a);
+        const prioB = getPrio(b);
+        if (prioA !== prioB) return prioA - prioB;
+        return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
+      }));
       setFetchingPosts(false);
     });
     return unsubscribe;
@@ -510,7 +525,7 @@ function App() {
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.2 }}
           >
-            {activePage === 'dashboard' && <Dashboard posts={posts} onUseMedia={handleUseMedia} user={dbUser} onViewAll={() => setActivePage('queue')} />}
+            {activePage === 'dashboard' && <Dashboard posts={posts} accounts={accounts} onUpdate={handleUpdatePost} onUseMedia={handleUseMedia} user={dbUser} onViewAll={() => setActivePage('queue')} />}
             {activePage === 'scheduler' && (
               <Scheduler
                 onSchedule={handleSchedulePost}
@@ -536,6 +551,7 @@ function App() {
             {activePage === 'queue' && (
               <ScheduleList 
                 posts={posts} 
+                accounts={accounts}
                 onDelete={handleDeletePost} 
                 onUpdate={handleUpdatePost} 
                 onUseMedia={handleUseMedia} 

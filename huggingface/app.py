@@ -667,65 +667,62 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                         overlay_fps = 30
                         total_frames = 600 # 20 seconds at 30 fps
                         
+                        # Typing timeline distribution across lines
+                        num_lines = len(lines)
+                        typing_start_t = 1.0
+                        typing_end_t = 12.0
+                        typing_duration = typing_end_t - typing_start_t
+                        time_per_line = typing_duration / max(1, num_lines)
+                        
                         for frame_idx in range(total_frames):
                             t = frame_idx / float(overlay_fps)
                             text_canvas = Image.new('RGBA', (video_w, video_h), (255, 255, 255, 0))
                             draw_txt = ImageDraw.Draw(text_canvas)
                             
+                            # Determine which line is currently typing
+                            active_line_idx = 0
+                            if t < typing_start_t:
+                                active_line_idx = 0
+                            elif t >= typing_end_t:
+                                active_line_idx = num_lines - 1
+                            else:
+                                active_line_idx = int((t - typing_start_t) / time_per_line)
+                                active_line_idx = min(max(0, active_line_idx), num_lines - 1)
+                            
+                            # Cursor blinks at 4Hz (every 0.25s), stops blinking at t >= 15.0 before fadeout
+                            show_cursor = (t < 15.0) and (int(t * 4) % 2 == 0)
+                            
                             for idx, line in enumerate(lines):
-                                x = (video_w - line_widths[idx]) // 2
-                                y = line_y_positions[idx]
-                                draw_txt.text((x, y), line, font=font, fill=(255, 255, 255, 255))
+                                line_start_t = typing_start_t + idx * time_per_line
+                                line_end_t = typing_start_t + (idx + 1) * time_per_line
                                 
-                            mask = Image.new('L', (video_w, video_h), 0)
-                            draw_mask = ImageDraw.Draw(mask)
-                            
-                            # Typewriter reveal logic
-                            if len(lines) >= 1:
-                                line_w = line_widths[0]
-                                x_start = (video_w - line_w) // 2
-                                try:
-                                    bbox = font.getbbox(lines[0])
-                                    bbox0 = bbox[0]
-                                except:
-                                    bbox0 = 0
-                                if t < 1.0:
-                                    reveal_w = 0
-                                elif t > 5.0:
-                                    reveal_w = line_w
+                                if t < line_start_t:
+                                    typed_text = ""
+                                elif t >= line_end_t:
+                                    typed_text = line
                                 else:
-                                    reveal_w = int(line_w * ((t - 1.0) / 4.0))
-                                if reveal_w > 0:
-                                    # Add 15px horizontal padding to prevent any cursive glyph clipping
-                                    draw_mask.rectangle([x_start + bbox0 - 15, line_y_positions[0] - 10, x_start + bbox0 + reveal_w + 15, line_y_positions[0] + line_heights[0] + 10], fill=255)
+                                    fraction = (t - line_start_t) / time_per_line
+                                    char_len = int(len(line) * fraction)
+                                    typed_text = line[:char_len]
+                                
+                                # Append blinking cursor to the currently active typing line
+                                if idx == active_line_idx and show_cursor:
+                                    typed_text += "|"
                                     
-                            if len(lines) >= 2:
-                                line_w = line_widths[1]
-                                x_start = (video_w - line_w) // 2
-                                try:
-                                    bbox = font.getbbox(lines[1])
-                                    bbox0 = bbox[0]
-                                except:
-                                    bbox0 = 0
-                                if t < 5.0:
-                                    reveal_w = 0
-                                elif t > 10.0:
-                                    reveal_w = line_w
-                                else:
-                                    reveal_w = int(line_w * ((t - 5.0) / 5.0))
-                                if reveal_w > 0:
-                                    draw_mask.rectangle([x_start + bbox0 - 15, line_y_positions[1] - 10, x_start + bbox0 + reveal_w + 15, line_y_positions[1] + line_heights[1] + 10], fill=255)
+                                if typed_text:
+                                    # Center text using pre-calculated line_widths to prevent horizontal jumping/jitter
+                                    x = (video_w - line_widths[idx]) // 2
+                                    y = line_y_positions[idx]
+                                    draw_txt.text((x, y), typed_text, font=font, fill=(255, 255, 255, 255))
                                     
-                            r, g, b, a = text_canvas.split()
-                            revealed_alpha = ImageChops.multiply(a, mask)
-                            
+                            # Global fadeout in the last 2 seconds (t >= 18.0)
                             if t >= 18.0:
                                 fade_frac = max(0.0, 1.0 - ((t - 18.0) / 2.0))
+                                r, g, b, a = text_canvas.split()
                                 fade_mask = Image.new('L', (video_w, video_h), int(255 * fade_frac))
-                                revealed_alpha = ImageChops.multiply(revealed_alpha, fade_mask)
+                                faded_a = ImageChops.multiply(a, fade_mask)
+                                text_canvas.putalpha(faded_a)
                                 
-                            text_canvas.putalpha(revealed_alpha)
-                            
                             frame_name = os.path.join(temp_frames_dir, f"frame_{frame_idx:04d}.png")
                             text_canvas.save(frame_name, "PNG")
                             
@@ -1117,9 +1114,14 @@ def check_and_resume_active_stream():
                         if self_url_clean in node_url_clean or node_url_clean in self_url_clean:
                             is_assigned_to_me = True
                             break
+                elif not self_urls:
+                    # Fallback for local development: only resume if node_url is empty or local
+                    if not node_url_clean or "localhost" in node_url_clean or "127.0.0.1" in node_url_clean:
+                        is_assigned_to_me = True
+                    else:
+                        is_assigned_to_me = False
                 else:
-                    # Fallback for local development or if not running on HF Space
-                    is_assigned_to_me = True
+                    is_assigned_to_me = False
                     
                 if not is_assigned_to_me:
                     print(f"[SYSTEM] Skip resuming post {post_id} because it belongs to another node: {streaming_node_url}")
@@ -1551,6 +1553,803 @@ def get_status():
         resp.headers["Pragma"] = "no-cache"
         resp.headers["Expires"] = "0"
         return resp
+
+# =========================================================================
+# YOUTUBE ACCESS TOKEN REFRESH & RESUMABLE UPLOAD HELPER FUNCTIONS
+# =========================================================================
+def refresh_youtube_token(refresh_token, client_id, client_secret):
+    token_url = "https://oauth2.googleapis.com/token"
+    token_data = {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token"
+    }
+    res = requests.post(token_url, data=token_data)
+    token_json = res.json()
+    if "access_token" not in token_json:
+        raise Exception(f"Failed to refresh YouTube token: {token_json}")
+    return token_json["access_token"]
+
+def upload_video_to_youtube(video_path, access_token, metadata):
+    init_url = "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json; charset=UTF-8",
+        "X-Upload-Content-Length": str(os.path.getsize(video_path)),
+        "X-Upload-Content-Type": "video/mp4"
+    }
+    
+    init_res = requests.post(init_url, headers=headers, json=metadata)
+    if init_res.status_code != 200:
+        try:
+            err_json = init_res.json()
+            err_msg = err_json.get("error", {}).get("message", "")
+            if "quota" in err_msg.lower() or "quotaexceeded" in init_res.text.lower():
+                raise Exception("Batas kuota YouTube API harian Anda telah habis (quotaExceeded). Silakan ajukan kenaikan kuota di Google Cloud Console atau gunakan kredensial YouTube API lainnya.")
+            raise Exception(f"Gagal menginisiasi upload YouTube: {err_msg or init_res.text}")
+        except Exception as json_err:
+            if "quotaExceeded" in str(json_err):
+                raise json_err
+            raise Exception(f"Gagal menginisiasi upload YouTube: {init_res.status_code} - {init_res.text}")
+        
+    upload_url = init_res.headers.get("Location")
+    if not upload_url:
+        raise Exception("YouTube upload session Location not found in headers.")
+        
+    file_size = os.path.getsize(video_path)
+    chunk_size = 10 * 1024 * 1024  # 10 MB chunks
+    
+    with open(video_path, "rb") as f:
+        offset = 0
+        while offset < file_size:
+            chunk = f.read(chunk_size)
+            current_chunk_size = len(chunk)
+            
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Content-Range": f"bytes {offset}-{offset + current_chunk_size - 1}/{file_size}"
+            }
+            
+            res = requests.put(upload_url, headers=headers, data=chunk)
+            if res.status_code in [200, 201]:
+                res_data = res.json()
+                return res_data["id"]
+            elif res.status_code == 308:
+                offset += current_chunk_size
+            else:
+                raise Exception(f"Failed to upload video chunk: {res.status_code} - {res.text}")
+
+def set_youtube_thumbnail(video_id, thumbnail_url, access_token):
+    temp_thumb = f"/tmp/thumb_{video_id}.jpg"
+    download_video(thumbnail_url, temp_thumb)
+    
+    upload_url = f"https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId={video_id}"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "image/jpeg"
+    }
+    
+    with open(temp_thumb, "rb") as f:
+        res = requests.post(upload_url, headers=headers, data=f.read())
+        
+    try: os.remove(temp_thumb)
+    except: pass
+    
+    if res.status_code not in [200, 201]:
+        print(f"Failed to set YouTube thumbnail: {res.status_code} - {res.text}")
+
+def get_unique_filmora_metadata(yt_title):
+    import random
+    from datetime import datetime, timedelta
+    days_ago = random.randint(1, 7)
+    hours_ago = random.randint(0, 23)
+    mins_ago = random.randint(0, 59)
+    random_date = datetime.now() - timedelta(days=days_ago, hours=hours_ago, minutes=mins_ago)
+    creation_time = random_date.strftime("%Y-%m-%d %H:%M:%S")
+    
+    random_id = "".join(random.choices("0123456789ABCDEF", k=8))
+    software_ver = f"Wondershare Filmora 13.{random.randint(0,2)}.{random.randint(0,9)}"
+    
+    metadata = [
+        "-metadata:g", f"title={yt_title}",
+        "-metadata:g", f"software={software_ver}",
+        "-metadata:g", f"comment=Rendered Filmora Project ID {random_id}",
+        "-metadata:g", f"creation_time={creation_time}",
+        "-metadata:g", f"artist=Filmora User",
+        "-metadata:g", f"genre=Video",
+        "-metadata:g", f"composer=Filmora Audio Engine",
+        "-metadata:g", f"encoder=Lavf{random.randint(58,60)}.{random.randint(0,99)}.{random.randint(0,99)}"
+    ]
+    return metadata
+
+def resolve_local_random_media(user_id, category):
+    try:
+        media_ref = db.collection('media')
+        query = media_ref.where('userId', '==', user_id).where('category', '==', category).stream()
+        media_list = []
+        for doc in query:
+            data = doc.to_dict()
+            if data.get('mediaUrl'):
+                media_list.append(data)
+                
+        if not media_list:
+            print(f"[RANDOM RESOLVER] No media found locally for userId: {user_id}, category: {category}", flush=True)
+            return None
+            
+        import random
+        selected = random.choice(media_list)
+        print(f"[RANDOM RESOLVER] Resolved random local {category}: {selected.get('fileName')} - {selected.get('mediaUrl')}", flush=True)
+        return selected
+    except Exception as e:
+        print(f"[RANDOM RESOLVER] Local random resolution error: {e}", flush=True)
+        return None
+
+# =========================================================================
+# BACKGROUND POST RENDERING & UPLOAD WORKER
+# =========================================================================
+def run_post_generation_and_upload(post_id, dry_run=False):
+    import random
+    import shutil
+    import glob
+    from datetime import datetime, timedelta
+    
+    if not db:
+        print("Firebase DB not initialized, skipping post generation.")
+        return
+        
+    temp_video_path = f"/tmp/post_input_{post_id}.mp4"
+    temp_combined_audio_path = f"/tmp/post_backsound_combined_{post_id}.mp3"
+    temp_standard_audio_path = f"/tmp/post_backsound_standard_{post_id}.mp3"
+    temp_stamp_path = f"/tmp/post_image_stamp_{post_id}.png"
+    temp_stamped_video_path = f"/tmp/post_input_stamped_{post_id}.mp4"
+    temp_intro_video_path = f"/tmp/post_intro_final_{post_id}.mp4"
+    temp_main_segment = f"/tmp/post_main_seg_{post_id}.mp4"
+    temp_output_path = f"/tmp/post_final_output_{post_id}.mp4"
+    
+    try:
+        # 1. Update status to Processing
+        db.collection('posts').document(post_id).update({
+            'status': 'Processing',
+            'error_log': 'Hugging Face: Membaca konfigurasi postingan...'
+        })
+        
+        post_doc = db.collection('posts').document(post_id).get()
+        if not post_doc.exists:
+            print(f"Post {post_id} not found.")
+            return
+            
+        post_data = post_doc.to_dict()
+        video_url = post_data.get('mediaUrl')
+        backsound_urls = post_data.get('backsoundUrls', [])
+        image_stamp_url = post_data.get('imageStampUrl')
+        intro_text = post_data.get('introText')
+        yt_title = post_data.get('ytTitle', 'Postingan Snooplink')
+        content = post_data.get('content', '')
+        yt_tags = post_data.get('ytTags', '')
+        yt_privacy = post_data.get('ytPrivacy', 'public')
+        yt_category_id = post_data.get('ytCategoryId', '22')
+        yt_altered_content = post_data.get('ytAlteredContent', 'yes')
+        yt_thumbnail = post_data.get('ytThumbnail')
+        post_duration = post_data.get('postDuration', '5') # default 5 minutes
+        
+        # Local Random Resolution Fallback for Dry-Run Scheduled Simulations
+        user_id = post_data.get('userId')
+        random_video = post_data.get('randomVideo', False)
+        random_music = post_data.get('randomMusic', False)
+        random_thumbnail = post_data.get('randomThumbnail', False)
+        
+        if user_id:
+            # 1. Resolve random video locally if requested or empty
+            if (random_video or not video_url):
+                print(f"[LOCAL RESOLVER] Resolving random video locally for user: {user_id}...", flush=True)
+                resolved_vid = resolve_local_random_media(user_id, "video")
+                if resolved_vid:
+                    video_url = resolved_vid.get('mediaUrl')
+                    db.collection('posts').document(post_id).update({
+                        'mediaUrl': video_url,
+                        'mediaType': resolved_vid.get('mediaType', 'video/mp4'),
+                        'fileName': resolved_vid.get('fileName', 'Random Video'),
+                        'fileSize': resolved_vid.get('fileSize', 0)
+                    })
+            
+            # 2. Resolve random backsounds locally if requested or empty
+            if (random_music or not backsound_urls) and (post_data.get('randomMusic') or post_data.get('backsoundMode') == 'random'):
+                music_count = int(post_data.get('randomMusicCount', 1))
+                print(f"[LOCAL RESOLVER] Resolving {music_count} random backsounds locally for user: {user_id}...", flush=True)
+                media_ref = db.collection('media')
+                music_query = media_ref.where('userId', '==', user_id).where('category', '==', 'musik').stream()
+                music_list = [doc.to_dict().get('mediaUrl') for doc in music_query if doc.to_dict().get('mediaUrl')]
+                if music_list:
+                    import random
+                    selected_music = random.sample(music_list, min(len(music_list), music_count))
+                    backsound_urls = selected_music
+                    db.collection('posts').document(post_id).update({
+                        'backsoundUrls': backsound_urls
+                    })
+            
+            # 3. Resolve random thumbnail locally if requested or empty
+            if random_thumbnail and not yt_thumbnail:
+                print(f"[LOCAL RESOLVER] Resolving random thumbnail locally for user: {user_id}...", flush=True)
+                resolved_thumb = resolve_local_random_media(user_id, "gambar")
+                if resolved_thumb:
+                    yt_thumbnail = resolved_thumb.get('mediaUrl')
+                    db.collection('posts').document(post_id).update({
+                        'ytThumbnail': yt_thumbnail
+                    })
+        
+        account_id = post_data.get('accountId')
+        if not account_id:
+            raise Exception("Account ID tidak ditemukan di dokumen postingan.")
+            
+        account_doc = db.collection('social_accounts').document(account_id).get()
+        if not account_doc.exists:
+            raise Exception("Akun sosial media tidak ditemukan.")
+            
+        account_data = account_doc.to_dict()
+        refresh_token = account_data.get('accessToken')
+        
+        # 2. Download files
+        db.collection('posts').document(post_id).update({
+            'error_log': 'Hugging Face: Mengunduh file media utama...'
+        })
+        download_video(video_url, temp_video_path)
+        
+        # Download backsounds
+        combined_audio_path = None
+        downloaded_backsounds = []
+        if backsound_urls:
+            for idx, bs_url in enumerate(backsound_urls):
+                db.collection('posts').document(post_id).update({
+                    'error_log': f'Hugging Face: Mengunduh backsound {idx+1}/{len(backsound_urls)}...'
+                })
+                bs_path = f"/tmp/post_backsound_{post_id}_{idx}.mp3"
+                download_video(bs_url, bs_path)
+                downloaded_backsounds.append(bs_path)
+                
+            # Concatenate backsounds
+            if len(downloaded_backsounds) > 1:
+                db.collection('posts').document(post_id).update({
+                    'error_log': 'Hugging Face: Menggabungkan file backsound...'
+                })
+                concat_cmd = ["ffmpeg", "-y"]
+                for bs in downloaded_backsounds:
+                    concat_cmd.extend(["-i", bs])
+                filter_str = ""
+                for i in range(len(downloaded_backsounds)):
+                    filter_str += f"[{i}:a]aformat=sample_rates=44100:channel_layouts=stereo[a{i}];"
+                filter_str += "".join([f"[a{i}]" for i in range(len(downloaded_backsounds))])
+                filter_str += f"concat=n={len(downloaded_backsounds)}:v=0:a=1[outa]"
+                
+                concat_cmd.extend([
+                    "-filter_complex", filter_str,
+                    "-map", "[outa]",
+                    "-c:a", "libmp3lame", "-b:a", "192k", "-ar", "44100", "-ac", "2",
+                    temp_combined_audio_path
+                ])
+                res = subprocess.run(concat_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if res.returncode != 0:
+                    raise Exception(f"Gagal menggabungkan backsound: {res.stderr.decode('utf-8', errors='ignore')}")
+                combined_audio_path = temp_combined_audio_path
+            elif len(downloaded_backsounds) == 1:
+                # Standardize single audio file
+                cmd = ["ffmpeg", "-y", "-i", downloaded_backsounds[0], "-c:a", "libmp3lame", "-b:a", "192k", "-ar", "44100", "-ac", "2", temp_standard_audio_path]
+                res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if res.returncode == 0:
+                    combined_audio_path = temp_standard_audio_path
+                else:
+                    combined_audio_path = downloaded_backsounds[0]
+                    
+        # Apply Watermark Stamp
+        if image_stamp_url:
+            db.collection('posts').document(post_id).update({
+                'error_log': 'Hugging Face: Menempelkan gambar watermark...'
+            })
+            download_video(image_stamp_url, temp_stamp_path)
+            
+            # Detect height
+            video_h = 1080
+            try:
+                probe_res = subprocess.run(["ffmpeg", "-i", temp_video_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                res_match = re.search(r",\s*(\d+)x(\d+)", probe_res.stderr)
+                if res_match:
+                    video_h = int(res_match.group(2))
+            except Exception as pe:
+                print(f"Failed to probe video height: {pe}")
+                
+            stamp_h = int(video_h * 0.12)
+            stamp_cmd = [
+                "ffmpeg", "-y", "-i", temp_video_path, "-loop", "1", "-i", temp_stamp_path,
+                "-filter_complex", f"[1:v]scale=-1:{stamp_h},setsar=1[stamp];[0:v][stamp]overlay=main_w-overlay_w-10:main_h-overlay_h-10:shortest=1[outv]",
+                "-map", "[outv]", "-map", "0:a?",
+                "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
+                "-c:a", "copy",
+                temp_stamped_video_path
+            ]
+            res = subprocess.run(stamp_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if res.returncode != 0:
+                raise Exception(f"Gagal menempelkan stamp: {res.stderr.decode('utf-8', errors='ignore')}")
+            os.replace(temp_stamped_video_path, temp_video_path)
+            
+        # Detect audio on the main video
+        probe_audio = subprocess.run(["ffmpeg", "-i", temp_video_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        has_video_audio = "Audio:" in probe_audio.stderr
+        
+        # Compile Intro Video (Typewriter style)
+        intro_video_path = None
+        if intro_text and intro_text.strip():
+            db.collection('posts').document(post_id).update({
+                'error_log': 'Hugging Face: Menyiapkan intro teks...'
+            })
+            
+            # Select random option if multiple
+            intro_options = []
+            if "===" in intro_text:
+                intro_options = [opt.strip() for opt in intro_text.split("===") if opt.strip()]
+            elif "\n\n" in intro_text:
+                intro_options = [opt.strip() for opt in intro_text.split("\n\n") if opt.strip()]
+            else:
+                intro_options = [intro_text]
+                
+            selected_intro_text = random.choice(intro_options) if intro_options else intro_text
+            
+            # Dimensions
+            res_match = re.search(r",\s*(\d+)x(\d+)", probe_audio.stderr)
+            video_w, video_h = 1920, 1080
+            if res_match:
+                video_w = int(res_match.group(1))
+                video_h = int(res_match.group(2))
+                
+            temp_frames_dir = f"/tmp/post_intro_frames_{post_id}"
+            if os.path.exists(temp_frames_dir):
+                shutil.rmtree(temp_frames_dir)
+            os.makedirs(temp_frames_dir, exist_ok=True)
+            
+            temp_intro_clean = f"/tmp/post_intro_clean_{post_id}.mp4"
+            
+            # Construct intro cleanest cut (forcing CFR & 44100Hz silent audio or normal audio)
+            if has_video_audio:
+                intro_seg_cmd = [
+                    "ffmpeg", "-y", "-stream_loop", "-1", "-i", temp_video_path,
+                    "-t", "20",
+                    "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
+                    "-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-ac", "2",
+                    temp_intro_clean
+                ]
+            else:
+                intro_seg_cmd = [
+                    "ffmpeg", "-y",
+                    "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+                    "-stream_loop", "-1", "-i", temp_video_path,
+                    "-t", "20",
+                    "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
+                    "-c:a", "aac", "-b:a", "128k", "-shortest",
+                    "-map", "1:v", "-map", "0:a",
+                    temp_intro_clean
+                ]
+                
+            subprocess.run(intro_seg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            
+            # Generate transparent frames
+            from PIL import Image, ImageDraw, ImageFont, ImageChops
+            font_path = os.path.abspath("src/font/Caveat-Bold.ttf")
+            if not os.path.exists(font_path):
+                font_path = os.path.abspath("huggingface/src/font/Caveat-Bold.ttf")
+                
+            font_size = max(24, int(video_h * 0.05))
+            try:
+                font = ImageFont.truetype(font_path, font_size)
+            except:
+                font = ImageFont.load_default()
+                
+            max_text_width = int(video_w * 0.8)
+            
+            # wrap helper
+            def wrap_text_pil(text, font, max_width):
+                lines = []
+                for paragraph in text.split('\n'):
+                    words = paragraph.split(' ')
+                    current_line = []
+                    for word in words:
+                        test_line = ' '.join(current_line + [word])
+                        bbox = font.getbbox(test_line)
+                        w = bbox[2] - bbox[0]
+                        if w <= max_width:
+                            current_line.append(word)
+                        else:
+                            if current_line:
+                                lines.append(' '.join(current_line))
+                                current_line = [word]
+                            else:
+                                lines.append(word)
+                    if current_line:
+                        lines.append(' '.join(current_line))
+                return lines
+                
+            lines = wrap_text_pil(selected_intro_text, font, max_text_width)
+            
+            # positions
+            line_heights = []
+            line_widths = []
+            line_y_positions = []
+            line_spacing = int(font_size * 0.3)
+            
+            total_text_height = 0
+            for idx, line in enumerate(lines):
+                bbox = font.getbbox(line)
+                line_widths.append(bbox[2] - bbox[0])
+                line_heights.append(bbox[3] - bbox[1])
+                total_text_height += bbox[3] - bbox[1]
+                if idx < len(lines) - 1:
+                    total_text_height += line_spacing
+                    
+            y_start = (video_h - total_text_height) // 2
+            current_y = y_start
+            for idx, line in enumerate(lines):
+                line_y_positions.append(current_y)
+                current_y += line_heights[idx] + line_spacing
+                
+            overlay_fps = 30
+            total_frames = 600
+            
+            # Typing timeline distribution across lines
+            num_lines = len(lines)
+            typing_start_t = 1.0
+            typing_end_t = 12.0
+            typing_duration = typing_end_t - typing_start_t
+            time_per_line = typing_duration / max(1, num_lines)
+            
+            for frame_idx in range(total_frames):
+                t = frame_idx / float(overlay_fps)
+                text_canvas = Image.new('RGBA', (video_w, video_h), (255, 255, 255, 0))
+                draw_txt = ImageDraw.Draw(text_canvas)
+                
+                # Determine which line is currently typing
+                active_line_idx = 0
+                if t < typing_start_t:
+                    active_line_idx = 0
+                elif t >= typing_end_t:
+                    active_line_idx = num_lines - 1
+                else:
+                    active_line_idx = int((t - typing_start_t) / time_per_line)
+                    active_line_idx = min(max(0, active_line_idx), num_lines - 1)
+                
+                # Cursor blinks at 4Hz (every 0.25s), stops blinking at t >= 15.0 before fadeout
+                show_cursor = (t < 15.0) and (int(t * 4) % 2 == 0)
+                
+                for idx, line in enumerate(lines):
+                    line_start_t = typing_start_t + idx * time_per_line
+                    line_end_t = typing_start_t + (idx + 1) * time_per_line
+                    
+                    if t < line_start_t:
+                        typed_text = ""
+                    elif t >= line_end_t:
+                        typed_text = line
+                    else:
+                        fraction = (t - line_start_t) / time_per_line
+                        char_len = int(len(line) * fraction)
+                        typed_text = line[:char_len]
+                    
+                    # Append blinking cursor to the currently active typing line
+                    if idx == active_line_idx and show_cursor:
+                        typed_text += "|"
+                        
+                    if typed_text:
+                        # Center text using pre-calculated line_widths to prevent horizontal jumping/jitter
+                        x = (video_w - line_widths[idx]) // 2
+                        y = line_y_positions[idx]
+                        draw_txt.text((x, y), typed_text, font=font, fill=(255, 255, 255, 255))
+                        
+                # Global fadeout in the last 2 seconds (t >= 18.0)
+                if t >= 18.0:
+                    fade_frac = max(0.0, 1.0 - ((t - 18.0) / 2.0))
+                    r, g, b, a = text_canvas.split()
+                    fade_mask = Image.new('L', (video_w, video_h), int(255 * fade_frac))
+                    faded_a = ImageChops.multiply(a, fade_mask)
+                    text_canvas.putalpha(faded_a)
+                    
+                text_canvas.save(os.path.join(temp_frames_dir, f"frame_{frame_idx:04d}.png"), "PNG")
+                
+            merge_cmd = [
+                "ffmpeg", "-y", "-i", temp_intro_clean,
+                "-f", "image2", "-framerate", str(overlay_fps), "-i", os.path.join(temp_frames_dir, "frame_%04d.png"),
+                "-filter_complex", "[0:v][1:v]overlay=x=0:y=0:shortest=1[outv]",
+                "-map", "[outv]", "-map", "0:a",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                "-c:a", "copy",
+                temp_intro_video_path
+            ]
+            subprocess.run(merge_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            intro_video_path = temp_intro_video_path
+            
+            # cleanup frames
+            try: shutil.rmtree(temp_frames_dir)
+            except: pass
+            try: os.remove(temp_intro_clean)
+            except: pass
+            
+        # 3. Calculate target duration and compile main looped segment
+        db.collection('posts').document(post_id).update({
+            'error_log': 'Hugging Face: Merender video (FFmpeg)...'
+        })
+        
+        try:
+            target_duration_mins = int(post_duration)
+        except:
+            target_duration_mins = 5
+            
+        total_target_sec = target_duration_mins * 60
+        main_dur = total_target_sec - (20 if intro_video_path else 0)
+        if main_dur < 10:
+            main_dur = 10
+            
+        cmd = [
+            "ffmpeg", "-y",
+            "-stream_loop", "-1", "-i", temp_video_path
+        ]
+        cmd.extend(["-t", str(main_dur)])
+        cmd.extend(["-map", "0:v:0"])
+        
+        if has_video_audio:
+            cmd.extend(["-map", "0:a:0"])
+        else:
+            cmd.extend([
+                "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+                "-map", "1:a:0"
+            ])
+                
+        cmd.extend([
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "128k", "-ar", "44100"
+        ])
+        
+        cmd.append(temp_main_segment)
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if res.returncode != 0:
+            raise Exception(f"Gagal memproses segmen utama: {res.stderr.decode('utf-8', errors='ignore')}")
+            
+        # 4. Final Concatenation & Unique Filmora Metadata Tagging
+        db.collection('posts').document(post_id).update({
+            'error_log': 'Hugging Face: Memasang metadata unik & finalisasi...'
+        })
+        
+        filmora_metadata = get_unique_filmora_metadata(yt_title)
+        
+        if intro_video_path and os.path.exists(intro_video_path):
+            concat_cmd = [
+                "ffmpeg", "-y",
+                "-i", intro_video_path,
+                "-i", temp_main_segment,
+                "-filter_complex", "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[outv][outa]",
+                "-map", "[outv]", "-map", "[outa]",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                "-c:a", "aac", "-b:a", "128k", "-ar", "44100"
+            ]
+            concat_cmd.extend(filmora_metadata)
+            concat_cmd.append(temp_output_path)
+            
+            res = subprocess.run(concat_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if res.returncode != 0:
+                raise Exception(f"Gagal melakukan penggabungan intro: {res.stderr.decode('utf-8', errors='ignore')}")
+        else:
+            # Direct metadata injection without transcode (100x faster!)
+            meta_cmd = [
+                "ffmpeg", "-y",
+                "-i", temp_main_segment,
+                "-c", "copy"
+            ]
+            meta_cmd.extend(filmora_metadata)
+            meta_cmd.append(temp_output_path)
+            
+            res = subprocess.run(meta_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if res.returncode != 0:
+                raise Exception(f"Gagal menginjeksi metadata Filmora: {res.stderr.decode('utf-8', errors='ignore')}")
+                
+        # 4.5. Overlay combined background music if provided (covers both intro and main segments)
+        if combined_audio_path and os.path.exists(combined_audio_path):
+            db.collection('posts').document(post_id).update({
+                'error_log': 'Hugging Face: Memasang musik latar final...'
+            })
+            temp_final_video = f"/tmp/post_final_video_temp_{post_id}.mp4"
+            try:
+                if os.path.exists(temp_final_video):
+                    os.remove(temp_final_video)
+            except: pass
+            
+            os.replace(temp_output_path, temp_final_video)
+            
+            replace_audio_cmd = [
+                "ffmpeg", "-y",
+                "-i", temp_final_video,
+                "-stream_loop", "-1", "-i", combined_audio_path,
+                "-map", "0:v:0", "-map", "1:a:0",
+                "-c:v", "copy",
+                "-c:a", "aac", "-b:a", "128k", "-ar", "44100",
+                "-t", str(total_target_sec)
+            ]
+            replace_audio_cmd.extend(filmora_metadata)
+            replace_audio_cmd.append(temp_output_path)
+            
+            res = subprocess.run(replace_audio_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if res.returncode != 0:
+                # Restore original video to prevent total failure
+                try: os.replace(temp_final_video, temp_output_path)
+                except: pass
+                raise Exception(f"Gagal memasang musik latar final: {res.stderr.decode('utf-8', errors='ignore')}")
+                
+            try: os.remove(temp_final_video)
+            except: pass
+            
+        # Detect Dry Run / Test Mode
+        is_dry_run = dry_run or post_data.get('dryRun', False) or post_data.get('isTestMode', False)
+        
+        if is_dry_run:
+            db.collection('posts').document(post_id).update({
+                'error_log': 'Hugging Face: Menyimpan video hasil simulasi...'
+            })
+            
+            # Ensure local output directory exists
+            output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "generated_videos"))
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Clean filename
+            safe_title = "".join([c for c in yt_title if c.isalnum() or c in "-_ "]).strip().replace(" ", "_")
+            if not safe_title:
+                safe_title = "video"
+            filename = f"{safe_title}_{post_id}.mp4"
+            final_dest = os.path.join(output_dir, filename)
+            
+            # Copy to persistent location
+            shutil.copy2(temp_output_path, final_dest)
+            
+            # Set the URL to be served by local Flask server
+            video_url = f"http://localhost:7860/videos/{filename}"
+            
+            db.collection('posts').document(post_id).update({
+                'status': 'Published',
+                'error_log': f'SIMULASI SUKSES! Video disimpan di: {final_dest}',
+                'ytVideoId': f'MOCK_{post_id}',
+                'url': video_url
+            })
+            print(f"[DRY RUN] Simulation successful. Saved locally: {final_dest}")
+            return
+
+        # 5. YouTube API Upload Process
+        db.collection('posts').document(post_id).update({
+            'error_log': 'Hugging Face: Mengunggah video ke YouTube...'
+        })
+        
+        # Load credentials
+        # Load credentials (prioritize account-specific GCP project credentials)
+        custom_client_id = None
+        custom_client_secret = None
+        account_id = post_data.get('accountId')
+        if account_id:
+            try:
+                account_doc = db.collection('social_accounts').document(account_id).get()
+                if account_doc.exists:
+                    account_data = account_doc.to_dict() or {}
+                    custom_client_id = account_data.get('ytClientId')
+                    custom_client_secret = account_data.get('ytClientSecret')
+            except Exception as ae:
+                print(f"Failed to load custom YT credentials: {ae}")
+
+        client_id = custom_client_id or os.getenv("YT_CLIENT_ID")
+        client_secret = custom_client_secret or os.getenv("YT_CLIENT_SECRET")
+        cid_str = client_id[:15] if client_id else "None"
+        print(f"[YT UPLOADER] Using Client ID: {cid_str}... (Custom GCP: {custom_client_id is not None})", flush=True)
+        if not client_id or not client_secret:
+            try:
+                config_doc = db.collection('settings').document('config').get()
+                if config_doc.exists:
+                    config_data = config_doc.to_dict() or {}
+                    if not client_id: client_id = config_data.get('ytClientId')
+                    if not client_secret: client_secret = config_data.get('ytClientSecret')
+            except Exception as fe:
+                print(f"Failed to load global YT credentials: {fe}")
+                
+        if not client_id or not client_secret:
+            raise Exception("YouTube client_id atau client_secret tidak terkonfigurasi di env/Firestore!")
+            
+        # Clean and limit tags to avoid 'invalidTags' error (total length <= 400 chars)
+        safe_tags = []
+        if yt_tags:
+            cleaned_tags = [re.sub(r'[<>#]', '', t.strip()) for t in yt_tags.split(',')]
+            cleaned_tags = [t for t in cleaned_tags if t]
+            total_len = 0
+            for tag in cleaned_tags:
+                added_len = len(tag) + (2 if safe_tags else 0)
+                if total_len + added_len <= 400:
+                    safe_tags.append(tag)
+                    total_len += added_len
+                else:
+                    break
+
+        access_token = refresh_youtube_token(refresh_token, client_id, client_secret)
+        
+        metadata = {
+            "snippet": {
+                "title": yt_title,
+                "description": content,
+                "tags": safe_tags,
+                "categoryId": yt_category_id
+            },
+            "status": {
+                "privacyStatus": yt_privacy,
+                "selfDeclaredMadeForKids": False,
+                "containsSyntheticMedia": (yt_altered_content != "no")
+            }
+        }
+        
+        video_id = upload_video_to_youtube(temp_output_path, access_token, metadata)
+        
+        # Thumbnail upload if exists
+        if yt_thumbnail:
+            try:
+                db.collection('posts').document(post_id).update({
+                    'error_log': 'Hugging Face: Mengunggah thumbnail YouTube...'
+                })
+                set_youtube_thumbnail(video_id, yt_thumbnail, access_token)
+            except Exception as te:
+                print(f"Failed to set custom thumbnail: {te}")
+                
+        # Successful publish!
+        db.collection('posts').document(post_id).update({
+            'status': 'Published',
+            'error_log': '',
+            'ytVideoId': video_id,
+            'url': f"https://www.youtube.com/watch?v={video_id}"
+        })
+        print(f"Successfully processed and published post {post_id} to YouTube video: {video_id}")
+        
+    except Exception as e:
+        print(f"Error in post generation process: {e}")
+        db.collection('posts').document(post_id).update({
+            'status': 'Failed',
+            'error_log': f'Hugging Face Error: {str(e)}'
+        })
+    finally:
+        # Cleanup
+        for p in [temp_video_path, temp_combined_audio_path, temp_standard_audio_path, temp_stamp_path, temp_stamped_video_path, temp_intro_video_path, temp_main_segment, temp_output_path]:
+            if p and os.path.exists(p):
+                try: os.remove(p)
+                except: pass
+                
+        for p in glob.glob(f"/tmp/post_backsound_{post_id}_*.mp3"):
+            try: os.remove(p)
+            except: pass
+
+@app.route("/generate_post", methods=["POST"])
+def generate_post():
+    post_id = request.args.get("postId")
+    secret = request.args.get("secret")
+    dry_run = request.args.get("dryRun", "false").lower() == "true"
+    
+    clean_secret = secret.strip().strip('"').strip("'") if secret else ""
+    if clean_secret != HF_SECRET:
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
+        
+    if not post_id:
+        return jsonify({"status": "error", "message": "Missing postId parameter"}), 400
+        
+    if not db:
+        return jsonify({"status": "error", "message": f"Database not initialized: {db_init_status}"}), 500
+        
+    # Launch generation in a background thread
+    thread = threading.Thread(
+        target=run_post_generation_and_upload,
+        args=(post_id, dry_run)
+    )
+    thread.daemon = True
+    thread.start()
+    
+    return jsonify({"status": "success", "message": "Post generation and upload started in background"}), 200
+
+@app.route("/videos/<filename>")
+def serve_generated_video(filename):
+    import flask
+    output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "generated_videos"))
+    return flask.send_from_directory(output_dir, filename)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=7860)

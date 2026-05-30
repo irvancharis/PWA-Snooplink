@@ -41,6 +41,8 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
 
   // Live stream specific state
   const [postType, setPostType] = useState('post'); // 'post' or 'live'
+  const [isGenerateVideo, setIsGenerateVideo] = useState(false);
+  const [postDuration, setPostDuration] = useState('5');
   const [streamKeyMode, setStreamKeyMode] = useState('auto'); // 'auto' or 'manual'
   const [streamKey, setStreamKey] = useState('');
   const [liveDuration, setLiveDuration] = useState('60'); // default 60 minutes
@@ -59,6 +61,7 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
   const [randomMusicCount, setRandomMusicCount] = useState(1);
   const [imageStampUrl, setImageStampUrl] = useState('');
   const [introText, setIntroText] = useState('');
+  const [dryRun, setDryRun] = useState(false);
 
   // Modal & Uploader UI state
   const [alertModal, setAlertModal] = useState({ show: false, title: '', message: '' });
@@ -149,6 +152,9 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
       setImageStampUrl(editPost.imageStampUrl || '');
       setIntroText(editPost.introText || '');
       setRandomThumbnail(editPost.randomThumbnail || false);
+      setIsGenerateVideo(editPost.isGenerateVideo || false);
+      setPostDuration(editPost.postDuration || '5');
+      setDryRun(editPost.dryRun || false);
     } else {
       // Clear/Reset form when not editing
       setContent('');
@@ -181,6 +187,9 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
       setImageStampUrl('');
       setIntroText('');
       setRandomThumbnail(false);
+      setIsGenerateVideo(false);
+      setPostDuration('5');
+      setDryRun(false);
     }
   }, [editPost, accounts]);
 
@@ -456,10 +465,23 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
           backsoundUrls: backsoundMode === 'select' ? selectedBacksoundUrls : [],
           randomThumbnail
         }),
+        isGenerateVideo: postType === 'post' && (activeAcc?.platform === 'youtube' || editPost.platform === 'youtube') && isGenerateVideo,
+        ...(postType === 'post' && (activeAcc?.platform === 'youtube' || editPost.platform === 'youtube') && isGenerateVideo && {
+          randomVideo,
+          randomMusic: backsoundMode === 'random',
+          randomMusicCount: backsoundMode === 'random' ? Number(randomMusicCount) : 1,
+          backsoundUrls: backsoundMode === 'select' ? selectedBacksoundUrls : [],
+          imageStampUrl,
+          introText,
+          randomThumbnail,
+          postDuration,
+          dryRun: (activeAcc?.platform === 'youtube' || editPost.platform === 'youtube') && dryRun
+        }),
         ...((activeAcc?.platform === 'youtube' || editPost.platform === 'youtube') && {
           ytTitle,
           ytTitleTemplate: ytTitle,
           ytTags,
+          ytTagsTemplate: ytTags,
           ytPrivacy,
           ytCategoryId,
           ytThumbnail: ytThumbnailUrl,
@@ -496,10 +518,23 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
           backsoundUrls: backsoundMode === 'select' ? selectedBacksoundUrls : [],
           randomThumbnail
         }),
+        isGenerateVideo: postType === 'post' && hasYoutubeSelected && isGenerateVideo,
+        ...(postType === 'post' && hasYoutubeSelected && isGenerateVideo && {
+          randomVideo,
+          randomMusic: backsoundMode === 'random',
+          randomMusicCount: backsoundMode === 'random' ? Number(randomMusicCount) : 1,
+          backsoundUrls: backsoundMode === 'select' ? selectedBacksoundUrls : [],
+          imageStampUrl,
+          introText,
+          randomThumbnail,
+          postDuration,
+          dryRun: hasYoutubeSelected && dryRun
+        }),
         ...(hasYoutubeSelected && {
           ytTitle,
           ytTitleTemplate: ytTitle,
           ytTags,
+          ytTagsTemplate: ytTags,
           ytPrivacy,
           ytCategoryId,
           ytThumbnail: ytThumbnailUrl,
@@ -1390,14 +1425,14 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
                   {hasYoutubeSelected && (
                     <div className="input-group">
                       <label className="stat-label">Judul Video YouTube <span style={{color: 'red'}}>*</span></label>
-                      <input 
-                        type="text" 
-                        placeholder="Masukkan judul video..." 
-                        style={{ marginTop: '0.5rem', background: '#fff', width: '100%', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0.75rem 1rem' }}
+                      <textarea 
+                        rows={3} 
+                        placeholder="Masukkan judul video... (Bisa lebih dari 1 judul. Masukkan 1 judul per baris jika ingin diacak)" 
+                        style={{ marginTop: '0.5rem', background: '#fff', width: '100%', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0.75rem 1rem', fontFamily: 'inherit', resize: 'vertical' }}
                         value={ytTitle}
                         onChange={(e) => setYtTitle(e.target.value)}
                         required
-                      />
+                      ></textarea>
                     </div>
                   )}
                   
@@ -1414,6 +1449,22 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
                       required
                     ></textarea>
                   </div>
+
+                  {hasYoutubeSelected && isGenerateVideo && (
+                    <div className="input-group">
+                      <label className="stat-label" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <span>Teks Intro Ketik (Opsional - Bisa Lebih dari 1 & Diacak)</span>
+                        <Info size={14} style={{ color: 'var(--text-muted)' }} title="Teks sambutan bergaya mesin ketik premium selama 20 detik pertama. Anda bisa memasukkan beberapa pilihan teks intro agar diacak sistem untuk setiap sesi siaran." />
+                      </label>
+                      <textarea 
+                        rows={4} 
+                        placeholder="Masukkan teks sambutan. Anda bisa memasukkan beberapa alternatif pilihan agar diacak sistem.&#10;&#10;Contoh (Pisahkan pilihan dengan baris kosong ganda):&#10;Welcome to Snoozeland...&#10;Relax, breathe, and enjoy the nature...&#10;&#10;Halo dari Snoozeland...&#10;Selamat menikmati suasana alam yang indah..."
+                        style={{ marginTop: '0.5rem', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0.75rem 1rem', fontFamily: 'inherit', resize: 'vertical' }}
+                        value={introText}
+                        onChange={(e) => setIntroText(e.target.value)}
+                      ></textarea>
+                    </div>
+                  )}
 
                   {hasFacebookSelected && (
                     <div className="input-group">
@@ -1507,7 +1558,75 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
                 <span>Konfigurasi Media</span>
               </h3>
 
-              {postType === 'live' ? (
+              {postType === 'post' && hasYoutubeSelected && (
+                <div style={{ 
+                  background: '#f8fafc', 
+                  padding: '1rem 1.2rem', 
+                  borderRadius: '16px', 
+                  border: `2px solid ${isGenerateVideo ? 'var(--primary)' : '#e2e8f0'}`, 
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '1rem',
+                  transition: 'all 0.2s ease',
+                  marginBottom: '1rem'
+                }} onClick={() => setIsGenerateVideo(!isGenerateVideo)}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', flex: 1 }}>
+                    <span style={{ fontWeight: 800, color: isGenerateVideo ? 'var(--primary)' : 'var(--text-main)', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      🎥 Generate Video secara Otomatis
+                    </span>
+                    <span style={{ fontSize: '0.75rem', color: isGenerateVideo ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 500, lineHeight: '1.4' }}>
+                      Otomatis mengacak video, mencampur backsound, menambahkan watermark, dan intro dengan metadata unik (Filmora style) sebelum diunggah ke YouTube.
+                    </span>
+                  </div>
+                  <label className="switch-container" onClick={(e) => e.stopPropagation()}>
+                    <input 
+                      type="checkbox" 
+                      className="switch-input"
+                      checked={isGenerateVideo} 
+                      onChange={(e) => setIsGenerateVideo(e.target.checked)} 
+                    />
+                    <span className="switch-slider" style={{ backgroundColor: isGenerateVideo ? 'var(--primary)' : '#cbd5e1' }} />
+                  </label>
+                </div>
+              )}
+
+              {postType === 'post' && hasYoutubeSelected && isGenerateVideo && (
+                <div style={{ 
+                  background: '#f0fdf4', 
+                  padding: '1rem 1.2rem', 
+                  borderRadius: '16px', 
+                  border: `2px solid ${dryRun ? '#10b981' : '#e2e8f0'}`, 
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '1rem',
+                  transition: 'all 0.2s ease',
+                  marginBottom: '1rem'
+                }} onClick={() => setDryRun(!dryRun)}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', flex: 1 }}>
+                    <span style={{ fontWeight: 800, color: dryRun ? '#10b981' : 'var(--text-main)', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      🧪 Mode Simulasi (Dry Run)
+                    </span>
+                    <span style={{ fontSize: '0.75rem', color: dryRun ? '#10b981' : 'var(--text-muted)', fontWeight: 500, lineHeight: '1.4' }}>
+                      Aktifkan untuk menguji rendering video secara lengkap tanpa mengunggah ke YouTube. Video final akan disimpan langsung ke folder komputer lokal Anda untuk menghemat kuota YouTube API harian.
+                    </span>
+                  </div>
+                  <label className="switch-container" onClick={(e) => e.stopPropagation()}>
+                    <input 
+                      type="checkbox" 
+                      className="switch-input"
+                      checked={dryRun} 
+                      onChange={(e) => setDryRun(e.target.checked)} 
+                    />
+                    <span className="switch-slider" style={{ backgroundColor: dryRun ? '#10b981' : '#cbd5e1' }} />
+                  </label>
+                </div>
+              )}
+
+              {postType === 'live' || (postType === 'post' && isGenerateVideo) ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
                   
                   {/* Main Video Selector */}
@@ -2008,6 +2127,25 @@ const Scheduler = ({ onSchedule, initialMedia, onClearInitial, accounts, posts, 
                       </div>
                     )}
                   </div>
+
+                  {postType === 'post' && isGenerateVideo && (
+                    <div style={{ background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', marginTop: '0.4rem' }}>
+                      <label className="stat-label" style={{ fontWeight: 800 }}>Durasi Video Hasil Generate (Menit)</label>
+                      <input 
+                        type="number" 
+                        min="1" 
+                        max="180"
+                        placeholder="Misal: 5" 
+                        style={{ marginTop: '0.4rem', background: '#fff', width: '100%', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0.75rem 1rem', fontWeight: 700 }}
+                        value={postDuration}
+                        onChange={(e) => setPostDuration(e.target.value)}
+                        required
+                      />
+                      <p style={{ margin: '0.4rem 0 0 0', fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                        Tentukan durasi akhir video yang akan dibuat. Sistem akan mengulang (loop) video utama dan backsounds secara seamless hingga mencapai durasi ini.
+                      </p>
+                    </div>
+                  )}
 
                 </div>
               ) : (
