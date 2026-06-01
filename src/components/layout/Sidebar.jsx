@@ -10,13 +10,15 @@ import {
   LogOut, 
   Rocket,
   ShieldCheck,
-  Server
+  Server,
+  Film
 } from 'lucide-react';
 
 const Sidebar = ({ activePage, onNavigate, onLogout, isOpen, onClose, user }) => {
   const menuItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { id: 'scheduler', icon: Calendar, label: 'Create Post' },
+    { id: 'video-editor', icon: Film, label: 'Video Editor' },
     { id: 'queue', icon: List, label: 'List Schedule' },
     { id: 'media', icon: ImageIcon, label: 'Media Library' },
     { id: 'accounts', icon: Users, label: 'Accounts' },

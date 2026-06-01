@@ -19,6 +19,7 @@ import StreamingServers from './pages/StreamingServers';
 import AdminDashboard from './pages/AdminDashboard';
 import { PendingPage, RejectedPage, ExpiredPage } from './pages/StatusPages';
 import PrivacyPolicy from './pages/PrivacyPolicy';
+import VideoEditor from './pages/VideoEditor';
 
 // Firebase Services
 import { db } from './firebase';
@@ -572,6 +573,14 @@ function App() {
               />
             )}
             {activePage === 'media' && <MediaLibrary mediaList={mediaList} posts={posts} onUseMedia={handleUseMedia} onDelete={handleDeleteMedia} onUploadMedia={handleUploadMedia} user={dbUser} />}
+            {activePage === 'video-editor' && (
+              <VideoEditor
+                mediaList={mediaList}
+                onUploadMedia={handleUploadMedia}
+                onUseMedia={handleUseMedia}
+                user={dbUser}
+              />
+            )}
             {activePage === 'servers' && (dbUser?.role === 'admin' || dbUser?.email === 'irvancharis@gmail.com') && <StreamingServers user={dbUser} />}
             {activePage === 'admin' && dbUser?.role === 'admin' && (
               <AdminDashboard scriptUrl={GOOGLE_DRIVE_SCRIPT_URL} />
