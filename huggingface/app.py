@@ -2351,5 +2351,883 @@ def serve_generated_video(filename):
     output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "generated_videos"))
     return flask.send_from_directory(output_dir, filename)
 
+# =========================================================================
+# RECOVERY SERVER INTEGRATION (Merged from recovery_server.py)
+# =========================================================================
+import json
+import random
+
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Content-Type": "application/json"
+}
+
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+]
+
+def safe_requests_get(url, headers=None, timeout=10, max_retries=3):
+    last_error = None
+    curr_headers = dict(headers) if headers else {}
+    for attempt in range(max_retries):
+        try:
+            curr_headers["User-Agent"] = random.choice(USER_AGENTS)
+            curr_timeout = timeout + (attempt * 5) # increase timeout each retry
+            print(f"[HTTP GET] Querying {url} (Attempt {attempt+1}/{max_retries}, timeout: {curr_timeout}s)...", flush=True)
+            response = requests.get(url, headers=curr_headers, timeout=curr_timeout)
+            if response.status_code == 200:
+                return response
+            elif response.status_code == 429:
+                print(f"[RETRY] 429 Too Many Requests on attempt {attempt+1}, sleeping...", flush=True)
+                time.sleep(2 + attempt)
+            else:
+                print(f"[RETRY] HTTP {response.status_code} on attempt {attempt+1}", flush=True)
+        except requests.RequestException as e:
+            print(f"[RETRY] Request failed on attempt {attempt+1}: {e}", flush=True)
+            last_error = e
+            time.sleep(1 + attempt)
+    if last_error:
+        raise last_error
+    raise Exception("Gagal terhubung ke YouTube setelah beberapa kali percobaan.")
+
+INVIDIOUS_INSTANCES = [
+    "https://yewtu.be",
+    "https://invidious.flokinet.to",
+    "https://invidious.projectsegfaut.im",
+    "https://inv.us.projectsegfaut.im"
+]
+
+def invidious_get(endpoint):
+    for instance in INVIDIOUS_INSTANCES:
+        try:
+            url = f"{instance}/api/v1/{endpoint}"
+            print(f"[INVIDIOUS] Fetching from {url}...", flush=True)
+            res = requests.get(url, timeout=8)
+            if res.status_code == 200:
+                return res.json()
+        except Exception as e:
+            print(f"[INVIDIOUS] Instance {instance} failed: {e}", flush=True)
+    raise Exception("Semua instance Invidious gagal dihubungi.")
+
+def extract_video_id(url):
+    pattern = r'(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})'
+    match = re.search(pattern, url)
+    return match.group(1) if match else None
+
+def fetch_video_details(video_id):
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    try:
+        response = safe_requests_get(url, headers=headers, timeout=10)
+        if response.status_code != 200:
+            raise Exception("HTTP error code received")
+        
+        match = re.search(r'var ytInitialData\s*=\s*({.*?});', response.text)
+        if not match:
+            match = re.search(r'window\["ytInitialData"\]\s*=\s*({.*?});', response.text)
+            
+        title = ""
+        description = ""
+        tags = []
+        channel_name = ""
+        channel_id = ""
+        
+        title_match = re.search(r'<title>(.*?)</title>', response.text)
+        if title_match:
+            title = title_match.group(1).replace(" - YouTube", "")
+            
+        desc_match = re.search(r'<meta name="description" content="(.*?)">', response.text)
+        if desc_match:
+            description = desc_match.group(1)
+            
+        keywords_match = re.search(r'<meta name="keywords" content="(.*?)">', response.text)
+        if keywords_match:
+            tags = [t.strip() for t in keywords_match.group(1).split(",")]
+            
+        if match:
+            data = json.loads(match.group(1))
+            video_details = data.get("contents", {}).get("twoColumnWatchNextResults", {}).get("results", {}).get("results", {}).get("contents", [])
+            for content in video_details:
+                if "videoPrimaryInfoRenderer" in content:
+                     info = content["videoPrimaryInfoRenderer"]
+                     title_text = info.get("title", {}).get("runs", [{}])[0].get("text", "")
+                     if title_text:
+                         title = title_text
+                elif "videoSecondaryInfoRenderer" in content:
+                     sec_info = content["videoSecondaryInfoRenderer"]
+                     owner = sec_info.get("owner", {}).get("videoOwnerRenderer", {})
+                     channel_name = owner.get("title", {}).get("runs", [{}])[0].get("text", "")
+                     channel_id = owner.get("navigationEndpoint", {}).get("browseEndpoint", {}).get("browseId", "")
+                     
+        return {
+            "title": title,
+            "description": description,
+            "tags": tags,
+            "channel_name": channel_name,
+            "channel_id": channel_id,
+            "video_id": video_id
+        }
+    except Exception as scrape_err:
+        print(f"[FALLBACK] fetch_video_details failed: {scrape_err}. Trying Invidious API...", flush=True)
+        try:
+            data = invidious_get(f"videos/{video_id}")
+            return {
+                "title": data.get("title", ""),
+                "description": data.get("description", ""),
+                "tags": data.get("keywords", []),
+                "channel_name": data.get("author", ""),
+                "channel_id": data.get("authorId", ""),
+                "video_id": video_id
+            }
+        except Exception as inv_err:
+            print(f"[FALLBACK] Invidious fetch_video_details failed: {inv_err}", flush=True)
+            return {}
+
+def fetch_channel_details(handle_or_id):
+    if not handle_or_id:
+        return None
+    
+    if handle_or_id.startswith("UC") and len(handle_or_id) == 24:
+        url = f"https://www.youtube.com/channel/{handle_or_id}"
+    else:
+        handle = handle_or_id if handle_or_id.startswith("@") else f"@{handle_or_id}"
+        url = f"https://www.youtube.com/{handle}"
+        
+    try:
+        response = safe_requests_get(url, headers=headers, timeout=10)
+        if response.status_code != 200:
+            raise Exception("HTTP error code received")
+            
+        desc_match = re.search(r'<meta name="description" content="(.*?)">', response.text)
+        description = desc_match.group(1) if desc_match else ""
+        
+        keywords_match = re.search(r'<meta name="keywords" content="(.*?)">', response.text)
+        keywords = keywords_match.group(1) if keywords_match else ""
+        
+        title_match = re.search(r'<title>(.*?)</title>', response.text)
+        title = title_match.group(1).replace(" - YouTube", "") if title_match else ""
+        
+        return {
+            "title": title,
+            "description": description,
+            "keywords": keywords
+        }
+    except Exception as scrape_err:
+        print(f"[FALLBACK] fetch_channel_details failed: {scrape_err}. Trying Invidious API...", flush=True)
+        try:
+            channel_id = handle_or_id
+            if not (channel_id.startswith("UC") and len(channel_id) == 24):
+                search_data = invidious_get(f"search?q={requests.utils.quote(handle_or_id)}&type=channel")
+                if search_data and isinstance(search_data, list):
+                    channel_id = search_data[0].get("authorId", "")
+            
+            if channel_id.startswith("UC") and len(channel_id) == 24:
+                data = invidious_get(f"channels/{channel_id}")
+                return {
+                    "title": data.get("author", ""),
+                    "description": data.get("description", ""),
+                    "keywords": ",".join(data.get("allowedRegions", []))
+                }
+            return None
+        except Exception as inv_err:
+            print(f"[FALLBACK] Invidious fetch_channel_details failed: {inv_err}", flush=True)
+            return None
+
+def analyze_channel_seo(title, description, keywords, handle):
+    recommendations = []
+    issues_count = 0
+    
+    handle_clean = handle.replace("@", "").lower() if handle else ""
+    title_clean = title.lower() if title else ""
+    
+    if handle_clean and title_clean:
+        if handle_clean not in title_clean.replace(" ", "") and title_clean.replace(" ", "") not in handle_clean:
+            recommendations.append({
+                "type": "warning",
+                "title": "Ketidakselarasan Nama & Handle",
+                "current": f"Nama channel Anda adalah '{title}' sedangkan handle Anda adalah '@{handle_clean}'. Keduanya tidak selaras.",
+                "expected": "Sebaiknya selaraskan nama channel dengan handle Anda (misalnya menyamakan ejaan) agar audiens dan algoritma pencarian lebih mudah mencocokkan profil Anda."
+            })
+            issues_count += 1
+            
+    if not description:
+        recommendations.append({
+            "type": "danger",
+            "title": "Deskripsi Channel Kosong",
+            "current": "Tab 'Tentang' (About) channel Anda sama sekali tidak memiliki teks deskripsi.",
+            "expected": "Tulis deskripsi menarik minimal 150-300 karakter di YouTube Studio > Penyesuaian > Info Dasar. Jelaskan topik utama konten Anda kepada penonton dan algoritma YouTube."
+        })
+        issues_count += 1
+    elif len(description) < 100:
+        recommendations.append({
+            "type": "warning",
+            "title": "Deskripsi Terlalu Pendek",
+            "current": f"Deskripsi channel saat ini sangat singkat, yaitu hanya memiliki panjang {len(description)} karakter.",
+            "expected": "Perluas deskripsi Anda hingga minimal 150-300 karakter dengan menyertakan penjelasan yang lebih detail mengenai isi channel serta kata kunci utama topik Anda."
+        })
+        issues_count += 1
+    else:
+        if "@" not in description and "email" not in description.lower() and "contact" not in description.lower():
+            recommendations.append({
+                "type": "info",
+                "title": "Email Kontak Belum Dicantumkan",
+                "current": "Tidak ditemukan alamat email bisnis atau kata kunci tawaran kerja sama di deskripsi channel Anda.",
+                "expected": "Tambahkan kalimat kontak bisnis yang jelas di deskripsi (misalnya: 'Hubungi kami: email@domain.com') untuk memudahkan sponsor/kolaborator menghubungi Anda."
+            })
+            
+    if not keywords:
+        recommendations.append({
+            "type": "danger",
+            "title": "Kata Kunci Channel (Keywords) Kosong",
+            "current": "Halaman channel Anda tidak dikonfigurasi dengan kata kunci pencarian kategori konten apa pun.",
+            "expected": "Buka YouTube Studio > Setelan > Saluran > Info Dasar, lalu tambahkan minimal 5-10 tag kata kunci yang relevan dengan niche konten Anda agar algoritma dapat merekomendasikan channel Anda pada penonton yang tepat."
+        })
+        issues_count += 1
+    else:
+        kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
+        if len(kw_list) < 5:
+            recommendations.append({
+                "type": "warning",
+                "title": "Kata Kunci Kurang Spesifik",
+                "current": f"Hanya ditemukan {len(kw_list)} kata kunci pencarian dasar pada konfigurasi channel Anda.",
+                "expected": "Tambahkan minimal 5-10 kata kunci relevan di Setelan Saluran YouTube Studio untuk mendeskripsikan secara spesifik topik niche konten Anda."
+            })
+            issues_count += 1
+            
+    if description:
+        spam_terms = ["sub4sub", "sub back", "follback", "hack", "cheat", "free download", "click here"]
+        found_spams = [term for term in spam_terms if term in description.lower()]
+        if found_spams:
+            recommendations.append({
+                "type": "danger",
+                "title": "Penggunaan Kata Kunci Berisiko Tinggi",
+                "current": f"Ditemukan indikasi kata kunci berisiko/spam: '{', '.join(found_spams)}' di deskripsi channel Anda.",
+                "expected": "Segera hapus kata-kata tersebut dari deskripsi. YouTube melarang keras spam komentar/deskripsi dan dapat menangguhkan visibilitas channel Anda jika terdeteksi melanggar kebijakan spam."
+            })
+            issues_count += 1
+            
+        shorteners = ["bit.ly", "tinyurl.com", "adf.ly", "t.co", "rebrand.ly"]
+        found_shorteners = [s for s in shorteners if s in description.lower()]
+        if found_shorteners:
+            recommendations.append({
+                "type": "warning",
+                "title": "Deteksi Penggunaan URL Pendek",
+                "current": f"Deskripsi Anda memuat URL pendek yang disingkat ({', '.join(found_shorteners)}).",
+                "expected": "Ganti tautan tersebut menggunakan URL lengkap (asli) atau gunakan fitur Tautan resmi di YouTube Studio. Algoritma YouTube menyaring URL pendek untuk mencegah phising/spam, yang berisiko menekan visibilitas channel Anda."
+            })
+            issues_count += 1
+            
+    if not recommendations:
+        recommendations.append({
+            "type": "success",
+            "title": "SEO Channel Optimal",
+            "current": "Semua konfigurasi metadata dasar channel Anda telah lengkap.",
+            "expected": "Pertahankan konfigurasi saat ini dan tetap konsisten mempublikasikan video secara berkala."
+        })
+        
+    return recommendations, issues_count
+
+def fetch_channel_videos(channel_id):
+    if channel_id.startswith("UC") and len(channel_id) == 24:
+        url = f"https://www.youtube.com/channel/{channel_id}/videos"
+    else:
+        handle = channel_id if channel_id.startswith("@") else f"@{channel_id}"
+        url = f"https://www.youtube.com/{handle}/videos"
+        
+    try:
+        response = safe_requests_get(url, headers=headers, timeout=10)
+        if response.status_code != 200:
+            raise Exception("HTTP error code received")
+            
+        match = re.search(r'var ytInitialData\s*=\s*({.*?});', response.text)
+        if not match:
+            match = re.search(r'window\["ytInitialData"\]\s*=\s*({.*?});', response.text)
+            
+        if not match:
+            return []
+            
+        data = json.loads(match.group(1))
+        tabs = data.get("contents", {}).get("twoColumnBrowseResultsRenderer", {}).get("tabs", [])
+        
+        videos_tab = None
+        for tab in tabs:
+            tab_renderer = tab.get("tabRenderer", {})
+            title = tab_renderer.get("title", "")
+            if title.lower() in ["videos", "video"]:
+                videos_tab = tab_renderer
+                break
+                
+        if not videos_tab and tabs:
+            videos_tab = tabs[0].get("tabRenderer", {})
+            
+        if not videos_tab:
+            return []
+            
+        content = videos_tab.get("content", {})
+        rich_grid = content.get("richGridRenderer", {})
+        items = rich_grid.get("contents", [])
+        
+        videos = []
+        for item in items:
+            rich_item = item.get("richItemRenderer", {})
+            if "content" in rich_item:
+                inner_content = rich_item["content"]
+                
+                if "lockupViewModel" in inner_content:
+                    lvm = inner_content["lockupViewModel"]
+                    video_id = lvm.get("contentId")
+                    lmvm = lvm.get("metadata", {}).get("lockupMetadataViewModel", {})
+                    title_text = lmvm.get("title", {}).get("content", "")
+                    
+                    views = "0 views"
+                    published = "N/A"
+                    cmvm = lmvm.get("metadata", {}).get("contentMetadataViewModel", {})
+                    rows = cmvm.get("metadataRows", [])
+                    if rows:
+                        parts = rows[0].get("metadataParts", [])
+                        if len(parts) > 0:
+                            views = parts[0].get("text", {}).get("content", "0 views")
+                        if len(parts) > 1:
+                            published = parts[1].get("text", {}).get("content", "N/A")
+                            
+                    thumbnail = ""
+                    sources = lvm.get("contentImage", {}).get("thumbnailViewModel", {}).get("image", {}).get("sources", [])
+                    if sources:
+                        thumbnail = sources[-1].get("url", "")
+                        
+                    if video_id:
+                        videos.append({
+                            "video_id": video_id,
+                            "title": title_text,
+                            "views": views,
+                            "published": published,
+                            "thumbnail": thumbnail
+                        })
+                        
+                elif "videoRenderer" in inner_content:
+                    vr = inner_content["videoRenderer"]
+                    video_id = vr.get("videoId")
+                    title_text = vr.get("title", {}).get("runs", [{}])[0].get("text", "")
+                    views = vr.get("viewCountText", {}).get("simpleText", "") or vr.get("viewCountText", {}).get("runs", [{}])[0].get("text", "0 views")
+                    published = vr.get("publishedTimeText", {}).get("simpleText", "")
+                    thumbnail = vr.get("thumbnail", {}).get("thumbnails", [{}])[0].get("url", "")
+                    
+                    if video_id:
+                        videos.append({
+                            "video_id": video_id,
+                            "title": title_text,
+                            "views": views,
+                            "published": published,
+                            "thumbnail": thumbnail
+                        })
+        return videos
+    except Exception as scrape_err:
+        print(f"[FALLBACK] fetch_channel_videos failed: {scrape_err}. Trying Invidious API...", flush=True)
+        try:
+            cid = channel_id
+            if not (cid.startswith("UC") and len(cid) == 24):
+                search_data = invidious_get(f"search?q={requests.utils.quote(channel_id)}&type=channel")
+                if search_data and isinstance(search_data, list):
+                    cid = search_data[0].get("authorId", "")
+                    
+            if cid.startswith("UC") and len(cid) == 24:
+                data = invidious_get(f"channels/{cid}/videos")
+                videos = []
+                for item in data.get("videos", []):
+                    videos.append({
+                        "video_id": item.get("videoId"),
+                        "title": item.get("title"),
+                        "views": f"{item.get('viewCount', 0):,} views",
+                        "published": item.get("publishedText", "N/A"),
+                        "thumbnail": item.get("videoThumbnails", [{}])[0].get("url", "")
+                    })
+                return videos
+            return []
+        except Exception as inv_err:
+            print(f"[FALLBACK] Invidious fetch_channel_videos failed: {inv_err}", flush=True)
+            return []
+
+@app.route("/api/check-channel", methods=["POST"])
+def check_channel():
+    payload = request.json or {}
+    channel_query = payload.get("channel", "").strip()
+    if not channel_query:
+        return jsonify({"status": "error", "message": "Channel handle or name is required."}), 400
+        
+    query = channel_query
+    lower_query = query.lower()
+    if "youtube.com" in lower_query or "youtu.be" in lower_query or lower_query.startswith("http") or lower_query.startswith("www."):
+        if "/@" in query:
+            query = "@" + query.split("/@")[1].split("/")[0].split("?")[0]
+        elif "/channel/" in query:
+            query = query.split("/channel/")[1].split("/")[0].split("?")[0]
+        elif "/c/" in query:
+            query = query.split("/c/")[1].split("/")[0].split("?")[0]
+        elif "/user/" in query:
+            query = query.split("/user/")[1].split("/")[0].split("?")[0]
+            
+    url = f"https://www.youtube.com/results?search_query={requests.utils.quote(query)}"
+    try:
+        response = safe_requests_get(url, headers=headers, timeout=10)
+        if response.status_code != 200:
+            return jsonify({"status": "error", "message": f"YouTube returned HTTP {response.status_code}"}), 500
+            
+        match = re.search(r'var ytInitialData\s*=\s*({.*?});', response.text)
+        if not match:
+            match = re.search(r'window\["ytInitialData"\]\s*=\s*({.*?});', response.text)
+            
+        if not match:
+            return jsonify({"status": "error", "message": "Failed to retrieve search data from YouTube."}), 500
+            
+        data = json.loads(match.group(1))
+        contents = data.get("contents", {})
+        two_column = contents.get("twoColumnSearchResultRenderer", {}) or contents.get("twoColumnSearchResultsRenderer", {})
+        primary = two_column.get("primaryContents", {})
+        section_list = primary.get("sectionListRenderer", {})
+        section_contents = section_list.get("contents", [])
+        
+        rank = -1
+        found_item = None
+        current_rank = 0
+        
+        for section in section_contents:
+            item_section = section.get("itemSectionRenderer", {})
+            items = item_section.get("contents", [])
+            for item in items:
+                if "videoRenderer" in item or "channelRenderer" in item:
+                    current_rank += 1
+                    
+                if "channelRenderer" in item:
+                    cr = item["channelRenderer"]
+                    ch_id = cr.get("channelId")
+                    title = cr.get("title", {}).get("simpleText", "") or cr.get("title", {}).get("runs", [{}])[0].get("text", "")
+                    browse_id = cr.get("navigationEndpoint", {}).get("browseEndpoint", {}).get("browseId", "")
+                    canonical_url = cr.get("navigationEndpoint", {}).get("browseEndpoint", {}).get("canonicalBaseUrl", "")
+                    
+                    match_found = False
+                    if query.lower() in title.lower():
+                        match_found = True
+                    elif query.lower() in browse_id.lower():
+                        match_found = True
+                    elif canonical_url and query.lower() in canonical_url.lower():
+                        match_found = True
+                        
+                    if match_found and rank == -1:
+                        rank = current_rank
+                        found_item = {
+                            "title": title,
+                            "channel_id": browse_id,
+                            "handle": canonical_url.replace("/", "") if canonical_url else "",
+                            "thumbnail": cr.get("thumbnail", {}).get("thumbnails", [{}])[0].get("url", ""),
+                            "video_count": cr.get("videoCountText", {}).get("runs", [{}])[0].get("text", "0") if "videoCountText" in cr else "0",
+                            "subscribers": cr.get("subscriberCountText", {}).get("simpleText", "0") or cr.get("subscriberCountText", {}).get("runs", [{}])[0].get("text", "0") if "subscriberCountText" in cr else "0"
+                        }
+                        
+        channel_details = None
+        if found_item:
+            channel_details = fetch_channel_details(found_item["channel_id"])
+            handle_name = found_item["handle"]
+        else:
+            channel_details = fetch_channel_details(query)
+            handle_name = query if query.startswith("@") else f"@{query}"
+            
+        optimizations = []
+        issues_count = 0
+        
+        if channel_details:
+            if not found_item:
+                found_item = {
+                    "title": channel_details["title"],
+                    "channel_id": handle_name,
+                    "handle": handle_name,
+                    "thumbnail": "https://yt3.ggpht.com/a/default-user=s88-c-k-c0x00ffffff-no-rj",
+                    "video_count": "N/A",
+                    "subscribers": "N/A"
+                }
+            optimizations, issues_count = analyze_channel_seo(
+                channel_details["title"],
+                channel_details["description"],
+                channel_details["keywords"],
+                handle_name
+            )
+            
+        channel_videos = []
+        if found_item:
+            cid = found_item.get("channel_id") or found_item.get("handle") or query
+            channel_videos = fetch_channel_videos(cid)
+            
+        if rank != -1:
+            if rank == 1:
+                status = "safe"
+                desc = "Channel Anda ditemukan di peringkat #1 hasil pencarian. Visibilitas optimal."
+            elif rank <= 5:
+                status = "warning"
+                desc = f"Channel Anda berada di peringkat #{rank} hasil pencarian. Terlihat, tetapi perlu peningkatan SEO."
+            else:
+                status = "warning"
+                desc = f"Channel Anda berada di peringkat #{rank} hasil pencarian. Peringkat pencarian rendah."
+                
+            return jsonify({
+                "status": "success",
+                "result": status,
+                "rank": rank,
+                "description": desc,
+                "channel_info": found_item,
+                "optimizations": optimizations,
+                "issues_count": issues_count,
+                "videos": channel_videos
+            })
+        else:
+            if channel_details:
+                return jsonify({
+                    "status": "success",
+                    "result": "shadowbanned",
+                    "rank": None,
+                    "description": "Indikasi Shadowban: Channel Anda aktif saat diakses langsung, tetapi disembunyikan sepenuhnya dari indeks pencarian YouTube.",
+                    "channel_info": found_item,
+                    "optimizations": optimizations,
+                    "issues_count": issues_count,
+                    "videos": channel_videos
+                })
+            else:
+                return jsonify({
+                    "status": "success",
+                    "result": "shadowbanned",
+                    "rank": None,
+                    "description": "Channel tidak dapat ditemukan di pencarian maupun akses langsung. Silakan periksa apakah handle/URL sudah benar.",
+                    "channel_info": None,
+                    "optimizations": [],
+                    "issues_count": 0,
+                    "videos": []
+                })
+            
+    except Exception as e:
+        print(f"[FALLBACK] check_channel failed: {e}. Trying Invidious search fallback...", flush=True)
+        try:
+            search_data = invidious_get(f"search?q={requests.utils.quote(query)}&type=channel")
+            if search_data and isinstance(search_data, list):
+                item = search_data[0]
+                channel_id = item.get("authorId", "")
+                
+                # Fetch channel details from Invidious
+                channel_details = invidious_get(f"channels/{channel_id}")
+                
+                found_item = {
+                    "title": item.get("author", ""),
+                    "channel_id": channel_id,
+                    "handle": f"@{item.get('author', '')}",
+                    "thumbnail": item.get("authorThumbnails", [{}])[-1].get("url", "") if item.get("authorThumbnails") else "https://yt3.ggpht.com/a/default-user=s88-c-k-c0x00ffffff-no-rj",
+                    "video_count": str(channel_details.get("videoCount", 0)),
+                    "subscribers": str(channel_details.get("subCount", 0))
+                }
+                
+                optimizations, issues_count = analyze_channel_seo(
+                    channel_details.get("author", ""),
+                    channel_details.get("description", ""),
+                    "",  # no tags directly from Invidious
+                    found_item["handle"]
+                )
+                
+                # Fetch videos from Invidious
+                videos_data = invidious_get(f"channels/{channel_id}/videos")
+                channel_videos = []
+                for v in videos_data.get("videos", [])[:10]:
+                    channel_videos.append({
+                        "video_id": v.get("videoId"),
+                        "title": v.get("title"),
+                        "views": f"{v.get('viewCount', 0):,} views",
+                        "published": v.get("publishedText", "N/A"),
+                        "thumbnail": v.get("videoThumbnails", [{}])[0].get("url", "") if v.get("videoThumbnails") else ""
+                    })
+                    
+                # Search rank from Invidious search results:
+                rank = -1
+                for idx, r_item in enumerate(search_data):
+                    if r_item.get("authorId") == channel_id:
+                        rank = idx + 1
+                        break
+                        
+                status = "safe" if rank == 1 else "warning"
+                desc = "Channel Anda ditemukan di peringkat #1 hasil pencarian (via Invidious)." if rank == 1 else f"Channel Anda ditemukan di peringkat #{rank} hasil pencarian (via Invidious)."
+                
+                return jsonify({
+                    "status": "success",
+                    "result": status,
+                    "rank": rank if rank != -1 else 1,
+                    "description": desc,
+                    "channel_info": found_item,
+                    "optimizations": optimizations,
+                    "issues_count": issues_count,
+                    "videos": channel_videos
+                })
+        except Exception as inv_err:
+            print(f"[FALLBACK] Invidious fallback failed: {inv_err}", flush=True)
+            
+        return jsonify({"status": "error", "message": f"Exception occurred: {str(e)}"}), 500
+
+@app.route("/api/ping-video", methods=["POST"])
+def ping_video_api():
+    payload = request.json or {}
+    video_url = payload.get("url", "").strip()
+    if not video_url:
+        return jsonify({"status": "error", "message": "Video URL atau ID diperlukan."}), 400
+        
+    channel_id = None
+    if "youtube.com/channel/" in video_url:
+        channel_id = video_url.split("/channel/")[1].split("/")[0].split("?")[0]
+    elif video_url.startswith("UC") and len(video_url) == 24:
+        channel_id = video_url
+    
+    if not channel_id:
+        video_id = extract_video_id(video_url) if ("youtube.com" in video_url or "youtu.be" in video_url) else video_url
+        if not video_id or len(video_id) != 11:
+            return jsonify({"status": "error", "message": "Format Link Video atau Video ID tidak valid."}), 400
+            
+        details = fetch_video_details(video_id)
+        channel_id = details.get("channel_id")
+        
+    if not channel_id:
+        return jsonify({
+            "status": "error", 
+            "message": "Gagal mendapatkan Channel ID dari video. Pastikan video berstatus Publik."
+        }), 400
+        
+    results = []
+    
+    # 1. Google PubSubHubbub
+    hub_url = "https://pubsubhubbub.appspot.com/publish"
+    topic_url = f"https://www.youtube.com/xml/feeds/videos.xml?channel_id={channel_id}"
+    
+    try:
+        res = requests.post(hub_url, data={
+            "hub.mode": "publish",
+            "hub.url": topic_url
+        }, timeout=10)
+        if res.status_code in [200, 204]:
+            results.append({
+                "engine": "Google PubSubHubbub (YouTube)",
+                "status": "success",
+                "message": "Sinyal pemulihan diterima. Google diperintahkan untuk segera mengindeks ulang feed video channel Anda."
+            })
+        else:
+            results.append({
+                "engine": "Google PubSubHubbub (YouTube)",
+                "status": "warning",
+                "message": f"Google mengembalikan kode status {res.status_code}."
+            })
+    except Exception as e:
+        results.append({
+            "engine": "Google PubSubHubbub (YouTube)",
+            "status": "error",
+            "message": str(e)
+        })
+        
+    # 2. Ping-O-Matic
+    try:
+        ping_res = requests.get(
+            f"http://pingomatic.com/ping/?title=YouTube+Channel&blogurl={requests.utils.quote('https://www.youtube.com/channel/' + channel_id)}&rssurl={requests.utils.quote(topic_url)}&chk_weblogs=on&chk_blogs=on&chk_feedburner=on&chk_syndic8=on&chk_newsisfree=on&chk_topicexchange=on&chk_google=on&chk_tailrank=on&chk_postcast=on&chk_asides=on",
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=10
+        )
+        if ping_res.status_code == 200:
+            results.append({
+                "engine": "Ping-O-Matic Indexer",
+                "status": "success",
+                "message": "Sinyal ping berhasil disebarkan ke berbagai direktori pencarian blog dan sindikasi feed."
+            })
+        else:
+            results.append({
+                "engine": "Ping-O-Matic Indexer",
+                "status": "warning",
+                "message": f"Ping-O-Matic mengembalikan status {ping_res.status_code}."
+            })
+    except Exception as e:
+        results.append({
+            "engine": "Ping-O-Matic Indexer",
+            "status": "error",
+            "message": str(e)
+        })
+        
+    return jsonify({
+        "status": "success",
+        "message": f"Sinyal indeksasi pemulihan dikirim untuk Channel ID: {channel_id}",
+        "results": results
+    })
+
+@app.route("/api/clean-description", methods=["POST"])
+def clean_description_api():
+    payload = request.json or {}
+    text = payload.get("text", "").strip()
+    if not text:
+        return jsonify({"status": "error", "message": "Description text is required."}), 400
+        
+    urls = re.findall(r'https?://\S+', text)
+    shorteners = ["bit.ly", "tinyurl.com", "adf.ly", "co.vu", "t.co", "rebrand.ly", "is.gd", "ow.ly"]
+    
+    cleaned_text = text
+    removed_links_count = 0
+    for url in urls:
+        if any(s in url.lower() for s in shorteners):
+            cleaned_text = cleaned_text.replace(url, "[Tautan Pendek Dihapus demi SEO]")
+            removed_links_count += 1
+            
+    hashtags = re.findall(r'#\w+', cleaned_text)
+    hashtag_count = len(hashtags)
+    removed_hashtags_count = 0
+    if hashtag_count > 3:
+        count = 0
+        def hashtag_repl(match):
+            nonlocal count, removed_hashtags_count
+            count += 1
+            if count > 3:
+                removed_hashtags_count += 1
+                return ""
+            return match.group(0)
+            
+        cleaned_text = re.sub(r'#\w+', hashtag_repl, cleaned_text)
+        cleaned_text = re.sub(r'\s+', ' ', cleaned_text).strip()
+        cleaned_text = cleaned_text.replace(" . ", ".\n").replace(" ! ", "!\n")
+        
+    caps_ratio = sum(1 for c in cleaned_text if c.isupper()) / max(len(cleaned_text), 1)
+    if caps_ratio > 0.5 and len(cleaned_text) > 20:
+        cleaned_text = cleaned_text.capitalize()
+        
+    return jsonify({
+        "status": "success",
+        "original_text": text,
+        "cleaned_text": cleaned_text,
+        "actions_taken": [
+            f"Menghapus {removed_links_count} tautan pendek berbahaya." if removed_links_count > 0 else "Tidak ada tautan pendek mencurigakan.",
+            f"Mengurangi hashtag berlebih dari {hashtag_count} menjadi 3." if removed_hashtags_count > 0 else "Jumlah hashtag aman (<= 3).",
+            "Merapikan penulisan huruf kapital berlebih." if caps_ratio > 0.5 else "Huruf kapital normal."
+        ]
+    })
+
+@app.route("/api/generate-seo", methods=["POST"])
+def generate_seo_api():
+    payload = request.json or {}
+    niche = payload.get("niche", "").strip()
+    keywords_str = payload.get("keywords", "").strip()
+    
+    if not niche:
+        return jsonify({"status": "error", "message": "Niche/Topic is required."}), 400
+        
+    keywords = [k.strip() for k in keywords_str.split(",") if k.strip()]
+    if not keywords:
+        keywords = [niche]
+        
+    safe_title = f"Cara {niche.capitalize()} Mudah & Cepat untuk Pemula | Panduan Terbaru"
+    safe_description = (
+        f"Halo semuanya! Di video kali ini kita akan mengulas secara mendalam panduan tentang {niche}.\n\n"
+        f"Topik yang dibahas mencakup:\n"
+        + "\n".join([f"- {kw.capitalize()}" for kw in keywords[:4]]) + "\n\n"
+        f"Video ini dirancang khusus bagi Anda yang ingin menguasai {niche} tanpa ribet. "
+        "Ikuti langkah-langkahnya dari awal hingga akhir.\n\n"
+        "Hubungi Kontak Kami untuk kolaborasi: business.email@domain.com\n\n"
+        f"#{niche.replace(' ', '')} #{keywords[0].replace(' ', '') if len(keywords)>0 else 'tutorial'}"
+    )
+    
+    safe_tags = ", ".join([niche] + keywords[:7])
+    
+    return jsonify({
+        "status": "success",
+        "title": safe_title,
+        "description": safe_description,
+        "tags": safe_tags
+    })
+
+@app.route("/api/analyze-metadata", methods=["POST"])
+def analyze_metadata_api():
+    payload = request.json or {}
+    url_input = payload.get("url", "").strip()
+    title = payload.get("title", "").strip()
+    description = payload.get("description", "").strip()
+    tags_str = payload.get("tags", "").strip()
+    
+    if url_input:
+        video_id = extract_video_id(url_input)
+        if video_id:
+            details = fetch_video_details(video_id)
+            if details:
+                title = details.get("title", "")
+                description = details.get("description", "")
+                tags_list = details.get("tags", [])
+                tags_str = ", ".join(tags_list)
+            else:
+                return jsonify({"status": "error", "message": "Failed to fetch video details from URL."}), 400
+        else:
+            return jsonify({"status": "error", "message": "Invalid YouTube video URL."}), 400
+    
+    tags_list = [t.strip() for t in tags_str.split(",") if t.strip()]
+    
+    score = 0
+    warnings = []
+    
+    if title:
+        caps_ratio = sum(1 for c in title if c.isupper()) / max(len(title), 1)
+        if caps_ratio > 0.6 and len(title) > 10:
+            score += 15
+            warnings.append("Excessive uppercase letters in title (sounds clickbaity/spammy).")
+            
+    if title and len(title) > 70:
+        warnings.append("Title is long (over 70 characters). Can be cut off or look cluttered.")
+        
+    if description:
+        hashtags = re.findall(r'#\w+', description)
+        hashtag_count = len(hashtags)
+        if hashtag_count > 15:
+            score += 30
+            warnings.append(f"Excessive hashtags found ({hashtag_count} tags). YouTube ignores ALL hashtags if there are more than 15.")
+        elif hashtag_count > 5:
+            warnings.append(f"Moderately high number of hashtags ({hashtag_count} tags). Keep them under 5.")
+            
+    trigger_words = [
+        "giveaway", "free gift", "giftcard", "make money", "passive income", 
+        "earn fast", "hack", "crack", "cheat", "download link", "click here",
+        "sub4sub", "sub back", "follow back", "follow me", "earn money"
+    ]
+    
+    found_triggers = []
+    text_to_scan = f"{title} {description} {' '.join(tags_list)}".lower()
+    for word in trigger_words:
+        if word in text_to_scan:
+            found_triggers.append(word)
+            
+    if found_triggers:
+        score += len(found_triggers) * 10
+        warnings.append(f"Trigger words detected: {', '.join(found_triggers)}.")
+        
+    if description:
+        urls = re.findall(r'https?://\S+', description)
+        if len(urls) > 10:
+            score += 15
+            warnings.append(f"Large number of outbound links found ({len(urls)} links).")
+            
+        shorteners = ["bit.ly", "tinyurl.com", "adf.ly", "co.vu", "t.co", "rebrand.ly", "is.gd", "ow.ly"]
+        found_shorteners = [s for s in shorteners if any(s in url for url in urls)]
+        if found_shorteners:
+            score += 10
+            warnings.append(f"URL shorteners detected: {', '.join(found_shorteners)}.")
+            
+    if score >= 40:
+        risk = "High"
+    elif score >= 15:
+        risk = "Moderate"
+    else:
+        risk = "Low"
+        
+    return jsonify({
+        "status": "success",
+        "title": title,
+        "description": description,
+        "tags": tags_str,
+        "spam_score": min(score, 100),
+        "risk_level": risk,
+        "warnings": warnings if warnings else ["No major metadata issues detected."]
+    })
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=7860)

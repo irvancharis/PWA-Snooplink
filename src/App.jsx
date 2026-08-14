@@ -20,6 +20,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import { PendingPage, RejectedPage, ExpiredPage } from './pages/StatusPages';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import VideoEditor from './pages/VideoEditor';
+import Recovery from './pages/Recovery';
 
 // Firebase Services
 import { db } from './firebase';
@@ -582,6 +583,7 @@ function App() {
               />
             )}
             {activePage === 'servers' && (dbUser?.role === 'admin' || dbUser?.email === 'irvancharis@gmail.com') && <StreamingServers user={dbUser} />}
+            {activePage === 'recovery' && <Recovery accounts={accounts} user={dbUser} />}
             {activePage === 'admin' && dbUser?.role === 'admin' && (
               <AdminDashboard scriptUrl={GOOGLE_DRIVE_SCRIPT_URL} />
             )}
