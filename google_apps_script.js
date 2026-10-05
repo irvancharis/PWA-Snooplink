@@ -1446,9 +1446,25 @@ function postToYouTube(token, post) {
         muteHttpExceptions: true
       });
       console.log("Thumbnail berhasil diunggah.");
+
+      // Hapus thumbnail dari Drive jika berasal dari Drive
+      if (thumbMatch && thumbMatch[1]) {
+        try {
+          DriveApp.getFileById(thumbMatch[1]).setTrashed(true);
+          console.log("Thumbnail Drive (" + thumbMatch[1] + ") berhasil dipindahkan ke sampah.");
+        } catch (e) {}
+      }
     } catch (e) {
       console.error("Video berhasil diunggah, tetapi Gagal upload thumbnail: " + e.message);
     }
+  }
+
+  // 6. HAPUS FILE VIDEO DARI GOOGLE DRIVE AGAR STORAGE TIDAK PENUH
+  try {
+    DriveApp.getFileById(fileId).setTrashed(true);
+    console.log("File Video Drive (" + fileId + ") berhasil dipindahkan ke sampah.");
+  } catch (driveErr) {
+    console.warn("Gagal menghapus file video dari Drive: " + driveErr.message);
   }
 
   return "Berhasil posting video ke YouTube. ID: " + videoId;
