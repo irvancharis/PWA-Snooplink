@@ -834,6 +834,8 @@ function executePost(post, postId) {
       console.log("Berhasil Posting! Respon: " + result);
       if (shouldSetPublished) {
         updateFirestoreStatus(postId, "Published", "");
+        // Bersihkan file media yang digunakan setelah postingan sukses published
+        cleanupPostMedia(post, postId);
       } else {
         updateFirestoreStatus(postId, "Processing", "Hugging Face: Proses rendering video di server cloud dimulai...");
       }
@@ -1446,25 +1448,9 @@ function postToYouTube(token, post) {
         muteHttpExceptions: true
       });
       console.log("Thumbnail berhasil diunggah.");
-
-      // Hapus thumbnail dari Drive jika berasal dari Drive
-      if (thumbMatch && thumbMatch[1]) {
-        try {
-          DriveApp.getFileById(thumbMatch[1]).setTrashed(true);
-          console.log("Thumbnail Drive (" + thumbMatch[1] + ") berhasil dipindahkan ke sampah.");
-        } catch (e) {}
-      }
     } catch (e) {
       console.error("Video berhasil diunggah, tetapi Gagal upload thumbnail: " + e.message);
     }
-  }
-
-  // 6. HAPUS FILE VIDEO DARI GOOGLE DRIVE AGAR STORAGE TIDAK PENUH
-  try {
-    DriveApp.getFileById(fileId).setTrashed(true);
-    console.log("File Video Drive (" + fileId + ") berhasil dipindahkan ke sampah.");
-  } catch (driveErr) {
-    console.warn("Gagal menghapus file video dari Drive: " + driveErr.message);
   }
 
   return "Berhasil posting video ke YouTube. ID: " + videoId;
@@ -2275,6 +2261,152 @@ function shuffleArray(array) {
     array[randomIndex] = temporaryValue;
   }
   return array;
+}
+
+// ==========================================
+// 5. AUTO CLEANUP MEDIA SETELAH POSTING
+// ==========================================
+function cleanupPostMedia(post, postId) {
+  try {
+    const isRecurring = post.fields.isRecurring?.booleanValue || false;
+    // Jangan hapus media jika jadwal bersifat berulang (recurring template)
+    if (isRecurring) {
+      console.log("Post " + postId + " adalah jadwal berulang, media dipertahankan.");
+      return;
+    }
+
+    const userId = post.fields.userId?.stringValue;
+    const mediaUrlsToDelete = [];
+
+    // 1. Kumpulkan mediaUrl utama
+    const mainMedia = post.fields.mediaUrl?.stringValue;
+    if (mainMedia) mediaUrlsToDelete.push(mainMedia);
+
+    // 2. Kumpulkan thumbnail YouTube
+    const thumbMedia = post.fields.ytThumbnail?.stringValue;
+    if (thumbMedia) mediaUrlsToDelete.push(thumbMedia);
+
+    // 3. Kumpulkan image stamp / watermark jika ada
+    const stampMedia = post.fields.imageStampUrl?.stringValue;
+    if (stampMedia) mediaUrlsToDelete.push(stampMedia);
+
+    // 4. Kumpulkan musik / backsound jika ada
+    if (post.fields.backsoundUrls?.arrayValue?.values) {
+      post.fields.backsoundUrls.arrayValue.values.forEach(function(item) {
+        if (item.stringValue) mediaUrlsToDelete.push(item.stringValue);
+      });
+    }
+
+    if (mediaUrlsToDelete.length === 0) {
+      console.log("Tidak ada media URL yang perlu dibersihkan untuk post: " + postId);
+      return;
+    }
+
+    console.log("Memulai pembersihan otomatis " + mediaUrlsToDelete.length + " media untuk post: " + postId);
+
+    // Dapatkan semua dokumen media milik user untuk mencocokkan & update quota
+    let userMediaList = [];
+    if (userId) {
+      try {
+        userMediaList = getMediaByUserIdFromFirestore(userId);
+      } catch (mErr) {
+        console.warn("Gagal mengambil media user dari Firestore: " + mErr.message);
+      }
+    }
+
+    let totalFreedBytes = 0;
+
+    mediaUrlsToDelete.forEach(function(url) {
+      if (!url) return;
+
+      // A. Ekstrak Google Drive File ID & Hapus dari Drive
+      let fileId = "";
+      const match = url.match(/[?&]id=([^&]+)/) || url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+      if (match && match[1]) {
+        fileId = match[1];
+      }
+
+      if (fileId) {
+        try {
+          DriveApp.getFileById(fileId).setTrashed(true);
+          console.log("File Drive (" + fileId + ") berhasil dipindahkan ke sampah.");
+        } catch (dErr) {
+          console.warn("Gagal menghapus file Drive (" + fileId + "): " + dErr.message);
+        }
+      }
+
+      // B. Hapus dokumen di Firestore koleksi 'media'
+      if (userMediaList && userMediaList.length > 0) {
+        const matchedDoc = userMediaList.find(function(m) {
+          const docUrl = m.fields?.mediaUrl?.stringValue || "";
+          return docUrl === url || (fileId && docUrl.indexOf(fileId) !== -1);
+        });
+
+        if (matchedDoc) {
+          const mediaDocId = matchedDoc.name.split('/').pop();
+          const fSize = parseInt(matchedDoc.fields?.fileSize?.integerValue || matchedDoc.fields?.fileSize?.doubleValue || 0, 10);
+          totalFreedBytes += fSize;
+
+          try {
+            deleteFirestoreDocument("media", mediaDocId);
+            console.log("Dokumen Firestore media (" + mediaDocId + ") berhasil dihapus.");
+          } catch (fErr) {
+            console.warn("Gagal menghapus dokumen Firestore media (" + mediaDocId + "): " + fErr.message);
+          }
+        }
+      }
+    });
+
+    // C. Kurangi storageUsed pada dokumen user di Firestore
+    if (userId && totalFreedBytes > 0) {
+      try {
+        reduceUserStorageUsed(userId, totalFreedBytes);
+      } catch (uErr) {
+        console.warn("Gagal memperbarui storageUsed user: " + uErr.message);
+      }
+    }
+
+  } catch (err) {
+    console.error("Error pada cleanupPostMedia: " + err.message);
+  }
+}
+
+function deleteFirestoreDocument(collection, docId) {
+  const token = getAccessToken();
+  const url = `https://firestore.googleapis.com/v1/projects/${FB_CONFIG.project_id}/databases/(default)/documents/${collection}/${docId}`;
+  
+  UrlFetchApp.fetch(url, {
+    method: "delete",
+    headers: { "Authorization": "Bearer " + token },
+    muteHttpExceptions: true
+  });
+}
+
+function reduceUserStorageUsed(userId, freedBytes) {
+  const token = getAccessToken();
+  const userDoc = getFirestoreDocument("users", userId);
+  if (!userDoc || !userDoc.fields) return;
+
+  const currentUsedMB = parseFloat(userDoc.fields.storageUsed?.doubleValue || userDoc.fields.storageUsed?.integerValue || 0);
+  const freedMB = freedBytes / (1024 * 1024);
+  const newUsedMB = Math.max(0, parseFloat((currentUsedMB - freedMB).toFixed(2)));
+
+  const url = `https://firestore.googleapis.com/v1/projects/${FB_CONFIG.project_id}/databases/(default)/documents/users/${userId}?updateMask.fieldPaths=storageUsed`;
+  const payload = {
+    fields: {
+      storageUsed: { doubleValue: newUsedMB }
+    }
+  };
+
+  UrlFetchApp.fetch(url, {
+    method: "patch",
+    contentType: "application/json",
+    headers: { "Authorization": "Bearer " + token },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+
+  console.log("Kuota user (" + userId + ") diperbarui: " + currentUsedMB + " MB -> " + newUsedMB + " MB");
 }
 
 
