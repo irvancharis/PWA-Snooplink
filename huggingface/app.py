@@ -945,33 +945,46 @@ def run_streaming_process(post_id, video_url, rtmp_url, duration):
                     except:
                         pass
       
-            if bitrate == "copy":
-                bitrate = "3000k"
-                
-            buf_size = f"{int(bitrate.replace('k', '')) * 2}k"
-            # Force constant 30 fps and keyframe interval (-g 60) for YouTube RTMP streaming
-            vcodec = ["-c:v", "libx264", "-b:v", bitrate, "-maxrate", bitrate, "-bufsize", buf_size, "-pix_fmt", "yuv420p", "-g", "60", "-r", "30", "-preset", "ultrafast", "-tune", "zerolatency"]
-            acodec = ["-c:a", "aac", "-b:a", "128k", "-ar", "44100"]
- 
-            # Force constant frame rate sync across stream boundaries (-vsync cfr) to completely eliminate loop boundary stuttering
-            cmd = ["ffmpeg", "-y", "-vsync", "cfr"]
-            cmd.extend(inputs)
-            if filter_complex_arg:
-                cmd.extend(filter_complex_arg)
-            if cmd_duration:
-                cmd.extend(cmd_duration)
-            cmd.extend(mapping)
-            cmd.extend(vcodec)
-            if not filter_complex_arg or has_audio:
-                cmd.extend(acodec)
-            # Add network timeout in microseconds (15 seconds) to prevent hanging silently
-            cmd.extend(["-rw_timeout", "15000000"])
-            cmd.extend(["-f", "flv", rtmp_url])
-                
+            can_copy = (not filter_complex_arg) and (not intro_video_path or not os.path.exists(intro_video_path)) and (not combined_audio_path or not os.path.exists(combined_audio_path))
+            
+            if can_copy:
+                # Direct stream copy: extremely low CPU usage (~1%)
+                cmd = ["ffmpeg", "-y"]
+                cmd.extend(inputs)
+                if cmd_duration:
+                    cmd.extend(cmd_duration)
+                cmd.extend(mapping)
+                cmd.extend(["-c", "copy"])
+                cmd.extend(["-rw_timeout", "15000000"])
+                cmd.extend(["-f", "flv", rtmp_url])
+            else:
+                if bitrate == "copy":
+                    bitrate = "3000k"
+                    
+                buf_size = f"{int(bitrate.replace('k', '')) * 2}k"
+                # Force constant 30 fps and keyframe interval (-g 60) for YouTube RTMP streaming
+                vcodec = ["-c:v", "libx264", "-b:v", bitrate, "-maxrate", bitrate, "-bufsize", buf_size, "-pix_fmt", "yuv420p", "-g", "60", "-r", "30", "-preset", "ultrafast", "-tune", "zerolatency"]
+                acodec = ["-c:a", "aac", "-b:a", "128k", "-ar", "44100"]
+
+                # Force constant frame rate sync across stream boundaries (-vsync cfr) to completely eliminate loop boundary stuttering
+                cmd = ["ffmpeg", "-y", "-vsync", "cfr"]
+                cmd.extend(inputs)
+                if filter_complex_arg:
+                    cmd.extend(filter_complex_arg)
+                if cmd_duration:
+                    cmd.extend(cmd_duration)
+                cmd.extend(mapping)
+                cmd.extend(vcodec)
+                if not filter_complex_arg or has_audio:
+                    cmd.extend(acodec)
+                # Add network timeout in microseconds (15 seconds) to prevent hanging silently
+                cmd.extend(["-rw_timeout", "15000000"])
+                cmd.extend(["-f", "flv", rtmp_url])
+                    
             # 5. Run FFmpeg subprocess
             with stream_lock:
                 if post_id in active_streams:
-                    active_streams[post_id]["logs"].append(f"[SYSTEM] Memulai proses FFmpeg (Percobaan #{retry_count + 1})...")
+                    active_streams[post_id]["logs"].append(f"[SYSTEM] Memulai proses FFmpeg ({'Stream Copy (Super Ringan)' if can_copy else 'Re-encode (Ultrafast)'} - Percobaan #{retry_count + 1})...")
                     active_streams[post_id]["logs"].append(f"FFmpeg command: {' '.join(cmd)}")
                     print(f"Running FFmpeg command: {' '.join(cmd)}")
  
