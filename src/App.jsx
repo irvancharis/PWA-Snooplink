@@ -502,6 +502,7 @@ function App() {
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         user={dbUser}
+        posts={posts}
       />
 
       <main className="main-content">

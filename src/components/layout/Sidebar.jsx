@@ -15,12 +15,17 @@ import {
   RefreshCw
 } from 'lucide-react';
 
-const Sidebar = ({ activePage, onNavigate, onLogout, isOpen, onClose, user }) => {
+const Sidebar = ({ activePage, onNavigate, onLogout, isOpen, onClose, user, posts = [] }) => {
+  const unpublishedCount = posts.filter(p => {
+    const s = (p.status || '').toLowerCase();
+    return s !== 'published' && s !== 'completed';
+  }).length;
+
   const menuItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { id: 'scheduler', icon: Calendar, label: 'Create Post' },
     { id: 'video-editor', icon: Film, label: 'Video Editor' },
-    { id: 'queue', icon: List, label: 'List Schedule' },
+    { id: 'queue', icon: List, label: 'List Schedule', badge: unpublishedCount > 0 ? unpublishedCount : null },
     { id: 'media', icon: ImageIcon, label: 'Media Library' },
     { id: 'accounts', icon: Users, label: 'Accounts' },
     { id: 'recovery', icon: RefreshCw, label: 'Recovery Panel' },
@@ -55,9 +60,27 @@ const Sidebar = ({ activePage, onNavigate, onLogout, isOpen, onClose, user }) =>
               key={item.id}
               className={`nav-item ${activePage === item.id ? 'active' : ''}`}
               onClick={() => handleNavigate(item.id)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
             >
-              <item.icon size={20} />
-              <span>{item.label}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                <item.icon size={20} />
+                <span>{item.label}</span>
+              </div>
+              {item.badge && (
+                <span style={{
+                  background: '#ef4444',
+                  color: 'white',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  padding: '0.15rem 0.5rem',
+                  borderRadius: '10px',
+                  minWidth: '20px',
+                  textAlign: 'center',
+                  boxShadow: '0 2px 4px rgba(239, 68, 68, 0.3)'
+                }}>
+                  {item.badge}
+                </span>
+              )}
             </div>
           ))}
         </nav>

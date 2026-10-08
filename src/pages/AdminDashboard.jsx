@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, query, getDocs, doc, updateDoc, onSnapshot } from 'firebase/firestore';
-import { ShieldCheck, XCircle, Settings, CheckCircle2, Search, Mail, Key } from 'lucide-react';
+import { collection, query, getDocs, doc, updateDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { ShieldCheck, XCircle, Settings, CheckCircle2, Search, Mail, Key, Trash2 } from 'lucide-react';
 
 const AdminDashboard = ({ scriptUrl }) => {
   const [users, setUsers] = useState([]);
@@ -151,6 +151,22 @@ const AdminDashboard = ({ scriptUrl }) => {
     }
   };
 
+  const handleDeleteUser = async (user) => {
+    if (user.role === 'admin' || user.email === 'irvancharis@gmail.com') {
+      alert("Akun Superadmin tidak dapat dihapus!");
+      return;
+    }
+    const confirmDelete = window.confirm(`Apakah Anda yakin ingin MENGHAPUS akun ${user.name} (${user.email}) secara permanen? Tindakan ini tidak dapat dibatalkan.`);
+    if (!confirmDelete) return;
+
+    try {
+      await deleteDoc(doc(db, 'users', user.id));
+      alert(`User ${user.name} berhasil dihapus dari sistem.`);
+    } catch (e) {
+      alert("Gagal menghapus user: " + e.message);
+    }
+  };
+
   const filteredUsers = users.filter(u => u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || u.email?.toLowerCase().includes(searchTerm.toLowerCase()));
 
   if (loading) return <div style={{ padding: '2rem' }}>Memuat data pengguna...</div>;
@@ -253,11 +269,14 @@ const AdminDashboard = ({ scriptUrl }) => {
                           <button onClick={() => handleApprove(u)} style={{ background: '#10b981', color: 'white', border: 'none', padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Setujui">
                             <CheckCircle2 size={18} />
                           </button>
-                          <button onClick={() => handleReject(u)} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Tolak">
+                          <button onClick={() => handleReject(u)} style={{ background: '#f59e0b', color: 'white', border: 'none', padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Tolak">
                             <XCircle size={18} />
                           </button>
                         </>
                       )}
+                      <button onClick={() => handleDeleteUser(u)} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Hapus Pengguna">
+                        <Trash2 size={18} />
+                      </button>
                     </div>
                   )}
                 </td>

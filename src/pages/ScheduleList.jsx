@@ -120,6 +120,25 @@ const ScheduleList = ({ posts, accounts = [], onDelete, onUpdate, onUseMedia, us
     return matchesSearch && matchesStatus && matchesType;
   });
 
+  const counts = {
+    all: posts.filter(p => {
+      const s = (p.status || '').toLowerCase();
+      return s !== 'published' && s !== 'completed';
+    }).length,
+    post: posts.filter(p => {
+      const s = (p.status || '').toLowerCase();
+      return s !== 'published' && s !== 'completed' && p.postType !== 'live' && !p.isRecurring;
+    }).length,
+    live: posts.filter(p => {
+      const s = (p.status || '').toLowerCase();
+      return s !== 'published' && s !== 'completed' && p.postType === 'live';
+    }).length,
+    recurring: posts.filter(p => {
+      const s = (p.status || '').toLowerCase();
+      return s !== 'published' && s !== 'completed' && p.isRecurring === true;
+    }).length
+  };
+
   return (
     <>
       {/* Tab pembeda live, post, dan recurring dengan Flat Icons */}
@@ -134,10 +153,10 @@ const ScheduleList = ({ posts, accounts = [], onDelete, onUpdate, onUseMedia, us
           flexWrap: 'wrap'
         }}>
           {[
-            { value: 'all', label: 'Semua Jadwal', icon: <Layers size={14} /> },
-            { value: 'post', label: 'Post Reguler', icon: <FileText size={14} /> },
-            { value: 'live', label: 'Live Stream', icon: <Radio size={14} /> },
-            { value: 'recurring', label: 'Jadwal Berulang', icon: <Repeat size={14} /> }
+            { value: 'all', label: 'Semua Jadwal', icon: <Layers size={14} />, count: counts.all },
+            { value: 'post', label: 'Post Reguler', icon: <FileText size={14} />, count: counts.post },
+            { value: 'live', label: 'Live Stream', icon: <Radio size={14} />, count: counts.live },
+            { value: 'recurring', label: 'Jadwal Berulang', icon: <Repeat size={14} />, count: counts.recurring }
           ].map(opt => {
             const isSelected = typeFilter === opt.value;
             let activeColor = 'var(--text-main)';
@@ -169,6 +188,19 @@ const ScheduleList = ({ posts, accounts = [], onDelete, onUpdate, onUseMedia, us
               >
                 {opt.icon}
                 <span>{opt.label}</span>
+                {opt.count > 0 && (
+                  <span style={{
+                    background: isSelected ? activeColor : '#94a3b8',
+                    color: 'white',
+                    fontSize: '0.68rem',
+                    padding: '0.1rem 0.4rem',
+                    borderRadius: '8px',
+                    fontWeight: 800,
+                    marginLeft: '0.2rem'
+                  }}>
+                    {opt.count}
+                  </span>
+                )}
               </button>
             );
           })}
