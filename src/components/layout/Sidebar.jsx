@@ -17,8 +17,9 @@ import {
 
 const Sidebar = ({ activePage, onNavigate, onLogout, isOpen, onClose, user, posts = [] }) => {
   const unpublishedCount = posts.filter(p => {
+    if (p.status === 'Deleted') return false;
     const s = (p.status || '').toLowerCase();
-    return s !== 'published' && s !== 'completed';
+    return s !== 'published' && s !== 'completed' && s !== 'complete';
   }).length;
 
   const menuItems = [

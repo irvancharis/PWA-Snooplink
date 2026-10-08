@@ -121,22 +121,10 @@ const ScheduleList = ({ posts, accounts = [], onDelete, onUpdate, onUseMedia, us
   });
 
   const counts = {
-    all: posts.filter(p => {
-      const s = (p.status || '').toLowerCase();
-      return s !== 'published' && s !== 'completed';
-    }).length,
-    post: posts.filter(p => {
-      const s = (p.status || '').toLowerCase();
-      return s !== 'published' && s !== 'completed' && p.postType !== 'live' && !p.isRecurring;
-    }).length,
-    live: posts.filter(p => {
-      const s = (p.status || '').toLowerCase();
-      return s !== 'published' && s !== 'completed' && p.postType === 'live';
-    }).length,
-    recurring: posts.filter(p => {
-      const s = (p.status || '').toLowerCase();
-      return s !== 'published' && s !== 'completed' && p.isRecurring === true;
-    }).length
+    all: posts.filter(p => p.status !== 'Deleted' && !isStatusCompleted(p.status)).length,
+    post: posts.filter(p => p.status !== 'Deleted' && !isStatusCompleted(p.status) && p.postType !== 'live' && !p.isRecurring).length,
+    live: posts.filter(p => p.status !== 'Deleted' && !isStatusCompleted(p.status) && p.postType === 'live').length,
+    recurring: posts.filter(p => p.status !== 'Deleted' && !isStatusCompleted(p.status) && p.isRecurring === true).length
   };
 
   return (

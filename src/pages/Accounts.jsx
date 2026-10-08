@@ -89,9 +89,10 @@ const Accounts = ({ accounts, onAdd, onDelete, onUpdate, user }) => {
       `client_id=${clientId}` +
       `&redirect_uri=${encodeURIComponent(redirectUri)}` +
       `&response_type=code` +
-      `&scope=${encodeURIComponent('https://www.googleapis.com/auth/youtube https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/youtube.force-ssl')}` +
+      `&scope=${encodeURIComponent('https://www.googleapis.com/auth/youtube https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/youtube.force-ssl https://www.googleapis.com/auth/yt-analytics.readonly https://www.googleapis.com/auth/yt-analytics-monetary.readonly')}` +
       `&access_type=offline` +
-      `&prompt=consent`;
+      `&prompt=consent%20select_account` +
+      `&include_granted_scopes=true`;
 
     const popup = window.open(oauthUrl, 'Google OAuth', 'width=500,height=600');
 
