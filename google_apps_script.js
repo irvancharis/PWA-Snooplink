@@ -152,15 +152,25 @@ function autoCheckAndPost() {
           const scheduledTimeVal = post.fields.time?.stringValue;
           if (scheduledTimeVal) {
             const scheduledTime = new Date(scheduledTimeVal);
-            if (now >= scheduledTime) {
-              console.log("Menjadwalkan eksekusi paralel untuk ID: " + postId);
+            const platform = post.fields.platform?.stringValue || "facebook";
+            const postType = post.fields.postType?.stringValue || "feed";
+
+            // Untuk YouTube Video reguler (non-live), picu proses 60 menit (1 jam) lebih awal
+            // agar server selesai merender dan mengunggah ke YouTube dengan status native Scheduled (publishAt)
+            let leadTimeMs = 0;
+            if (platform === "youtube" && postType !== "live") {
+              leadTimeMs = 60 * 60 * 1000; // 60 menit sebelum jam tayang
+            }
+
+            const triggerTime = new Date(scheduledTime.getTime() - leadTimeMs);
+
+            if (now >= triggerTime) {
+              console.log("Menjadwalkan eksekusi paralel untuk ID: " + postId + " (Lead time: " + (leadTimeMs / 60000) + " menit)");
 
               // 1. Ubah status segera ke "Processing"
-              updateFirestoreStatus(postId, "Processing");
+              updateFirestoreStatus(postId, "Processing", leadTimeMs > 0 ? "Memproses video 1 jam sebelum jadwal tayang..." : "Sedang diproses...");
 
               // 2. Siapkan request panggilan paralel (random media & spintax will be resolved inside executePost)
-
-              // 3. Siapkan request panggilan paralel
               requests.push({
                 url: webAppUrl + "?action=executePostSingle&postId=" + postId,
                 method: "post",
