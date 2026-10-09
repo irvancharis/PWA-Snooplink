@@ -2280,19 +2280,66 @@ def run_post_generation_and_upload(post_id, dry_run=False):
 
         access_token = refresh_youtube_token(refresh_token, client_id, client_secret)
         
+        # Poin 3: Tentukan defaultLanguage & defaultAudioLanguage berdasarkan tierLocation / konten
+        tier_loc = post_data.get('tierLocation', 'none')
+        lang_map = {
+            'tier1': 'en',
+            'tier2_es': 'es',
+            'tier2_pt': 'pt',
+            'tier3_vn': 'vi',
+            'tier3_th': 'th',
+            'tier3_ph': 'tl',
+            'en': 'en',
+            'id': 'id'
+        }
+        selected_lang = lang_map.get(tier_loc, 'id')
+
+        # Poin 1: Penjadwalan Native YouTube API (publishAt) jika waktu jadwal di masa depan
+        target_privacy = yt_privacy
+        publish_at_iso = None
+        post_time_str = post_data.get('time')
+        
+        if post_time_str and yt_privacy in ['public', 'unlisted', 'private']:
+            try:
+                # Format post.time biasanya: "YYYY-MM-DD HH:MM" atau ISO string
+                dt_target = None
+                for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S"):
+                    try:
+                        dt_target = datetime.strptime(post_time_str.strip(), fmt)
+                        break
+                    except ValueError:
+                        pass
+                
+                if dt_target:
+                    # Asumsi zona waktu server/user adalah WIB (UTC+7) jika tanpa offset
+                    dt_utc = dt_target - timedelta(hours=7)
+                    now_utc = datetime.utcnow()
+                    # Hanya aktifkan publishAt jika jadwalnya di masa depan (> 5 menit dari sekarang)
+                    if (dt_utc - now_utc).total_seconds() > 300:
+                        publish_at_iso = dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+                        target_privacy = "private"  # Wajib 'private' ketika menggunakan publishAt
+                        print(f"[YT UPLOADER] Native Scheduling enabled for {post_id} at {publish_at_iso} UTC", flush=True)
+            except Exception as pe:
+                print(f"[YT UPLOADER] Warning: Gagal mem-parse publishAt schedule: {pe}", flush=True)
+        
         metadata = {
             "snippet": {
                 "title": yt_title,
                 "description": content,
                 "tags": safe_tags,
-                "categoryId": yt_category_id
+                "categoryId": yt_category_id,
+                "defaultLanguage": selected_lang,
+                "defaultAudioLanguage": selected_lang
             },
             "status": {
-                "privacyStatus": yt_privacy,
+                "privacyStatus": target_privacy,
                 "selfDeclaredMadeForKids": False,
                 "containsSyntheticMedia": (yt_altered_content != "no")
             }
         }
+        
+        if publish_at_iso:
+            metadata["status"]["publishAt"] = publish_at_iso
         
         video_id = upload_video_to_youtube(temp_output_path, access_token, metadata)
         
