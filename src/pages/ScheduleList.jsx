@@ -118,6 +118,18 @@ const ScheduleList = ({ posts, accounts = [], onDelete, onUpdate, onUseMedia, us
       (typeFilter === 'recurring' && post.isRecurring === true);
       
     return matchesSearch && matchesStatus && matchesType;
+  }).sort((a, b) => {
+    const getTimeVal = (p) => {
+      if (p.time) {
+        const t = new Date(p.time).getTime();
+        if (!isNaN(t)) return t;
+      }
+      if (p.scheduledTime) {
+        return new Date(`1970-01-01T${p.scheduledTime}:00`).getTime() || 0;
+      }
+      return 0;
+    };
+    return getTimeVal(b) - getTimeVal(a);
   });
 
   const counts = {
