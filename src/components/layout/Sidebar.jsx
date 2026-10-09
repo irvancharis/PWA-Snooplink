@@ -29,7 +29,6 @@ const Sidebar = ({ activePage, onNavigate, onLogout, isOpen, onClose, user, post
     { id: 'queue', icon: List, label: 'List Schedule', badge: unpublishedCount > 0 ? unpublishedCount : null },
     { id: 'media', icon: ImageIcon, label: 'Media Library' },
     { id: 'accounts', icon: Users, label: 'Accounts' },
-    { id: 'recovery', icon: RefreshCw, label: 'Recovery Panel' },
   ];
 
   const isSuperAdmin = user?.role === 'admin' || user?.email === 'irvancharis@gmail.com';
