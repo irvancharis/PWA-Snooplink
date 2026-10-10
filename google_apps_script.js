@@ -1362,16 +1362,39 @@ function postToYouTube(token, post) {
   const contentType = fileMeta.mimeType || "video/mp4";
 
   // 2. Siapkan Metadata YouTube
+  let targetPrivacy = ytPrivacy;
+  let publishAtIso = null;
+  const postTimeStr = post.fields.time?.stringValue;
+  if (postTimeStr && (ytPrivacy === "public" || ytPrivacy === "unlisted" || ytPrivacy === "private")) {
+    try {
+      const scheduledDate = new Date(postTimeStr);
+      const now = new Date();
+      // Jika waktu jadwal di masa depan (> 5 menit dari sekarang), gunakan publishAt native YouTube
+      if (scheduledDate.getTime() - now.getTime() > 5 * 60 * 1000) {
+        publishAtIso = Utilities.formatDate(scheduledDate, "GMT", "yyyy-MM-dd'T'HH:mm:ss'Z'");
+        targetPrivacy = "private"; // YouTube mewajibkan status private saat dijadwalkan dengan publishAt
+        console.log("YouTube Native Scheduling (GAS) diaktifkan untuk jam " + publishAtIso + " UTC");
+      }
+    } catch (e) {
+      console.warn("Gagal mem-parse publishAt di GAS: " + e.message);
+    }
+  }
+
+  const statusPayload = {
+    privacyStatus: targetPrivacy,
+    containsSyntheticMedia: (post.fields.ytAlteredContent?.stringValue !== "no")
+  };
+  if (publishAtIso) {
+    statusPayload.publishAt = publishAtIso;
+  }
+
   const metadata = {
     snippet: {
       title: ytTitle,
       description: content,
       tags: ytTagsStr ? ytTagsStr.split(",").map(function (t) { return t.trim(); }) : []
     },
-    status: {
-      privacyStatus: ytPrivacy,
-      containsSyntheticMedia: (post.fields.ytAlteredContent?.stringValue !== "no")
-    }
+    status: statusPayload
   };
 
   // 3. Inisiasi Sesi Upload Resumable ke YouTube
