@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Rocket, Menu } from 'lucide-react';
+import { Plus, Search, Rocket, Menu, CheckCircle2, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 // Context
@@ -56,6 +56,7 @@ function App() {
   const [editingPost, setEditingPost] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [dbUser, setDbUser] = useState(null);
+  const [toastNotification, setToastNotification] = useState(null);
 
   // Sync real-time user data from Firestore
   useEffect(() => {
@@ -351,7 +352,13 @@ function App() {
         await addDoc(collection(db, 'posts'), postDoc);
       }
 
-      setActivePage('dashboard');
+      setToastNotification({
+        title: "Penjadwalan Berhasil!",
+        message: `Postingan berhasil disimpan dan masuk ke antrean jadwal tayang.`
+      });
+      setTimeout(() => setToastNotification(null), 4500);
+
+      setActivePage('queue');
     } catch (error) {
       console.error(error);
       alert("Gagal menjadwalkan postingan: " + error.message);
@@ -546,6 +553,11 @@ function App() {
                 onUpdatePost={async (postId, updatedData) => {
                   await handleUpdatePost(postId, updatedData);
                   setEditingPost(null);
+                  setToastNotification({
+                    title: "Perubahan Berhasil Disimpan!",
+                    message: "Jadwal postingan telah diperbarui."
+                  });
+                  setTimeout(() => setToastNotification(null), 4500);
                   setActivePage('queue');
                 }}
               />
@@ -587,6 +599,70 @@ function App() {
               <AdminDashboard scriptUrl={GOOGLE_DRIVE_SCRIPT_URL} />
             )}
           </motion.div>
+        </AnimatePresence>
+
+        {/* Global Toast Notification */}
+        <AnimatePresence>
+          {toastNotification && (
+            <motion.div
+              initial={{ opacity: 0, y: -20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20, scale: 0.95 }}
+              transition={{ duration: 0.25 }}
+              style={{
+                position: 'fixed',
+                top: '24px',
+                right: '24px',
+                zIndex: 9999,
+                background: '#fff',
+                borderRadius: '16px',
+                boxShadow: '0 20px 40px -15px rgba(0,0,0,0.15), 0 0 0 1px rgba(16, 185, 129, 0.2)',
+                padding: '1rem 1.4rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.9rem',
+                minWidth: '320px',
+                maxWidth: '450px'
+              }}
+            >
+              <div style={{
+                width: '38px',
+                height: '38px',
+                borderRadius: '12px',
+                background: '#ecfdf5',
+                color: '#10b981',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}>
+                <CheckCircle2 size={22} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 800, fontSize: '0.92rem', color: 'var(--text-main)', marginBottom: '0.15rem' }}>
+                  {toastNotification.title}
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+                  {toastNotification.message}
+                </div>
+              </div>
+              <button
+                onClick={() => setToastNotification(null)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <X size={16} />
+              </button>
+            </motion.div>
+          )}
         </AnimatePresence>
       </main>
       <PWAInstallPrompt />

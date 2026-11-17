@@ -119,6 +119,13 @@ const ScheduleList = ({ posts, accounts = [], onDelete, onUpdate, onUseMedia, us
       
     return matchesSearch && matchesStatus && matchesType;
   }).sort((a, b) => {
+    // Utamakan jadwal terbaru berdasarkan waktu pembuatan dokumen (createdAt)
+    const createdA = a.createdAt?.seconds || (a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0));
+    const createdB = b.createdAt?.seconds || (b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0));
+    if (createdB !== createdA) {
+      return createdB - createdA;
+    }
+
     const getTimeVal = (p) => {
       if (p.time) {
         const t = new Date(p.time).getTime();
