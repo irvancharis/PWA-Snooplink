@@ -170,12 +170,12 @@ const Dashboard = ({ posts: allPosts = [], accounts = [], user }) => {
   const currentMetricKey = metricTab;
   const values = chartData.map(d => d[currentMetricKey] || 0);
   const minVal = Math.min(...values) >= 0 ? 0 : Math.min(...values);
-  const maxVal = Math.max(...values) > 0 ? Math.max(...values) * 1.15 : 10;
+  const maxVal = Math.max(...values) > 0 ? Math.max(...values) * 1.25 : 10;
   
-  // Padding horizontal presisi agar garis langsung menyentuh pinggir box
-  const padX = 12;
-  const chartHeight = 320;
-  const chartWidth = 1000;
+  // Padding & proporsi natural chart
+  const padX = 24;
+  const chartHeight = 220;
+  const chartWidth = 900;
   const usableWidth = chartWidth - padX * 2;
 
   const pointsString = chartData.map((d, i) => {
@@ -428,12 +428,11 @@ const Dashboard = ({ posts: allPosts = [], accounts = [], user }) => {
         )}
 
         {/* SVG Dynamic Area Chart with Live Data */}
-        <div style={{ width: '100%', overflowX: 'auto', margin: '0 -0.5rem' }}>
-          <div style={{ width: '100%', position: 'relative' }}>
+        <div style={{ width: '100%', overflowX: 'auto' }}>
+          <div style={{ minWidth: '700px', width: '100%', position: 'relative' }}>
             <svg 
               viewBox={`0 0 ${chartWidth} ${chartHeight + 35}`} 
-              preserveAspectRatio="none"
-              style={{ width: '100%', height: '360px', overflow: 'visible', display: 'block' }}
+              style={{ width: '100%', height: '240px', overflow: 'visible', display: 'block' }}
               onMouseLeave={() => setHoveredPointIndex(null)}
             >
               <defs>
