@@ -171,17 +171,24 @@ const Dashboard = ({ posts: allPosts = [], accounts = [], user }) => {
   const values = chartData.map(d => d[currentMetricKey] || 0);
   const minVal = Math.min(...values) >= 0 ? 0 : Math.min(...values);
   const maxVal = Math.max(...values) > 0 ? Math.max(...values) * 1.15 : 10;
-  const chartHeight = 220;
-  const chartWidth = 700;
+  
+  // Padding horizontal agar titik awal dan akhir tidak terpotong tepi SVG
+  const padX = 30;
+  const chartHeight = 280;
+  const chartWidth = 1000;
+  const usableWidth = chartWidth - padX * 2;
 
   const pointsString = chartData.map((d, i) => {
-    const x = chartData.length > 1 ? (i / (chartData.length - 1)) * chartWidth : chartWidth / 2;
+    const x = chartData.length > 1 ? padX + (i / (chartData.length - 1)) * usableWidth : chartWidth / 2;
     const y = chartHeight - (((d[currentMetricKey] || 0) - minVal) / (maxVal - minVal || 1)) * chartHeight;
     return `${x},${y}`;
   }).join(' ');
 
+  const firstX = padX;
+  const lastX = chartWidth - padX;
+
   const areaPath = chartData.length > 1
-    ? `M 0,${chartHeight} L ${pointsString.split(' ').map(p => `L ${p}`).join(' ')} L ${chartWidth},${chartHeight} Z`.replace('M 0,' + chartHeight + ' L L', 'M 0,' + chartHeight + ' L')
+    ? `M ${firstX},${chartHeight} L ${pointsString.split(' ').map(p => `L ${p}`).join(' ')} L ${lastX},${chartHeight} Z`.replace(`M ${firstX},${chartHeight} L L`, `M ${firstX},${chartHeight} L`)
     : `M 0,${chartHeight} Z`;
 
   // Aggregate Content & Campaign Stats
@@ -421,11 +428,11 @@ const Dashboard = ({ posts: allPosts = [], accounts = [], user }) => {
         )}
 
         {/* SVG Dynamic Area Chart with Live Data */}
-        <div style={{ width: '100%', overflowX: 'auto' }}>
-          <div style={{ minWidth: '650px', position: 'relative' }}>
+        <div style={{ width: '100%', overflowX: 'auto', margin: '0 -0.5rem' }}>
+          <div style={{ minWidth: '850px', position: 'relative', width: '100%' }}>
             <svg 
-              viewBox={`0 0 ${chartWidth} ${chartHeight + 25}`} 
-              style={{ width: '100%', height: '260px', overflow: 'visible' }}
+              viewBox={`0 0 ${chartWidth} ${chartHeight + 35}`} 
+              style={{ width: '100%', height: '320px', overflow: 'visible', display: 'block' }}
               onMouseLeave={() => setHoveredPointIndex(null)}
             >
               <defs>
@@ -445,9 +452,9 @@ const Dashboard = ({ posts: allPosts = [], accounts = [], user }) => {
                 return (
                   <line 
                     key={idx} 
-                    x1="0" 
+                    x1={padX} 
                     y1={y} 
-                    x2={chartWidth} 
+                    x2={chartWidth - padX} 
                     y2={y} 
                     stroke="#f1f5f9" 
                     strokeDasharray="4 4" 
@@ -472,7 +479,7 @@ const Dashboard = ({ posts: allPosts = [], accounts = [], user }) => {
               {/* Vertical Guide Line on Hover */}
               {hoveredPointIndex !== null && chartData[hoveredPointIndex] && (
                 (() => {
-                  const x = chartData.length > 1 ? (hoveredPointIndex / (chartData.length - 1)) * chartWidth : chartWidth / 2;
+                  const x = chartData.length > 1 ? padX + (hoveredPointIndex / (chartData.length - 1)) * usableWidth : chartWidth / 2;
                   return (
                     <line
                       x1={x}
@@ -490,7 +497,7 @@ const Dashboard = ({ posts: allPosts = [], accounts = [], user }) => {
 
               {/* Data points & Precise Tick Marks */}
               {chartData.map((d, i) => {
-                const x = chartData.length > 1 ? (i / (chartData.length - 1)) * chartWidth : chartWidth / 2;
+                const x = chartData.length > 1 ? padX + (i / (chartData.length - 1)) * usableWidth : chartWidth / 2;
                 const y = chartHeight - (((d[currentMetricKey] || 0) - minVal) / (maxVal - minVal || 1)) * chartHeight;
                 
                 const isHovered = hoveredPointIndex === i;
