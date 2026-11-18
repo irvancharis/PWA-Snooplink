@@ -139,9 +139,15 @@ const Dashboard = ({ posts: allPosts = [], accounts = [], user }) => {
   const chartData = useMemo(() => {
     if (liveYtData.dailyPoints && liveYtData.dailyPoints.length > 0) {
       return liveYtData.dailyPoints.map(p => {
-        const d = new Date(p.day);
-        const dateLabel = d.toLocaleDateString('id-ID', { month: 'short', day: 'numeric' });
+        // Parse YYYY-MM-DD explicitly to prevent UTC timezone date shifting
+        const [y, m, d] = (p.day || '').split('-').map(Number);
+        let dateLabel = p.day;
+        if (y && m && d) {
+          const localDate = new Date(y, m - 1, d);
+          dateLabel = localDate.toLocaleDateString('id-ID', { month: 'short', day: 'numeric' });
+        }
         return {
+          rawDate: p.day,
           label: dateLabel,
           views: p.views,
           watchHours: p.watchHours,
@@ -153,10 +159,12 @@ const Dashboard = ({ posts: allPosts = [], accounts = [], user }) => {
 
     // Default fallback if no real data
     return [
-      { label: '01 Okt', views: 0, watchHours: 0, subscribers: 0, revenue: 0 },
-      { label: '08 Okt', views: 0, watchHours: 0, subscribers: 0, revenue: 0 }
+      { rawDate: '2026-10-01', label: '01 Okt', views: 0, watchHours: 0, subscribers: 0, revenue: 0 },
+      { rawDate: '2026-10-08', label: '08 Okt', views: 0, watchHours: 0, subscribers: 0, revenue: 0 }
     ];
   }, [liveYtData.dailyPoints]);
+
+  const [hoveredPointIndex, setHoveredPointIndex] = useState(null);
 
   // SVG Chart Calculations
   const currentMetricKey = metricTab;
@@ -415,7 +423,11 @@ const Dashboard = ({ posts: allPosts = [], accounts = [], user }) => {
         {/* SVG Dynamic Area Chart with Live Data */}
         <div style={{ width: '100%', overflowX: 'auto' }}>
           <div style={{ minWidth: '650px', position: 'relative' }}>
-            <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} style={{ width: '100%', height: '230px', overflow: 'visible' }}>
+            <svg 
+              viewBox={`0 0 ${chartWidth} ${chartHeight + 25}`} 
+              style={{ width: '100%', height: '260px', overflow: 'visible' }}
+              onMouseLeave={() => setHoveredPointIndex(null)}
+            >
               <defs>
                 <linearGradient id="chartGradientLive" x1="0%" y1="0%" x2="0%" y2="100%">
                   <stop offset="0%" stopColor={metricTab === 'revenue' ? '#34d399' : (metricTab === 'subscribers' ? '#a78bfa' : (metricTab === 'watchHours' ? '#fbbf24' : '#38bdf8'))} stopOpacity="0.38" />
@@ -457,53 +469,147 @@ const Dashboard = ({ posts: allPosts = [], accounts = [], user }) => {
                 points={pointsString}
               />
 
-              {/* Data points */}
+              {/* Vertical Guide Line on Hover */}
+              {hoveredPointIndex !== null && chartData[hoveredPointIndex] && (
+                (() => {
+                  const x = chartData.length > 1 ? (hoveredPointIndex / (chartData.length - 1)) * chartWidth : chartWidth / 2;
+                  return (
+                    <line
+                      x1={x}
+                      y1={0}
+                      x2={x}
+                      y2={chartHeight}
+                      stroke={metricTab === 'revenue' ? '#059669' : '#0284c7'}
+                      strokeWidth="1.5"
+                      strokeDasharray="3 3"
+                      opacity="0.8"
+                    />
+                  );
+                })()
+              )}
+
+              {/* Data points & Precise Tick Marks */}
               {chartData.map((d, i) => {
                 const x = chartData.length > 1 ? (i / (chartData.length - 1)) * chartWidth : chartWidth / 2;
                 const y = chartHeight - (((d[currentMetricKey] || 0) - minVal) / (maxVal - minVal || 1)) * chartHeight;
                 
-                // Show labels on key peaks or interval points
-                const shouldShowLabel = chartData.length <= 10 || (i % Math.ceil(chartData.length / 8) === 0) || (d[currentMetricKey] === Math.max(...values));
+                const isHovered = hoveredPointIndex === i;
+                const shouldShowLabel = isHovered || (hoveredPointIndex === null && (chartData.length <= 10 || (i % Math.ceil(chartData.length / 8) === 0) || (d[currentMetricKey] === Math.max(...values))));
 
                 const strokePointColor = metricTab === 'revenue' ? '#059669' : (metricTab === 'subscribers' ? '#7c3aed' : (metricTab === 'watchHours' ? '#d97706' : '#0284c7'));
 
+                // Tampilkan label tanggal pada titik-titik interval tertentu atau saat titik aktif
+                const isDateTick = i % Math.ceil(chartData.length / 8) === 0 || i === chartData.length - 1;
+
                 return (
-                  <g key={i} style={{ cursor: 'pointer' }}>
+                  <g 
+                    key={i} 
+                    style={{ cursor: 'pointer' }}
+                    onMouseEnter={() => setHoveredPointIndex(i)}
+                  >
+                    {/* Tick marker directly aligned under each key date point */}
+                    {isDateTick && (
+                      <line 
+                        x1={x} 
+                        y1={chartHeight} 
+                        x2={x} 
+                        y2={chartHeight + 6} 
+                        stroke="#cbd5e1" 
+                        strokeWidth="1.5" 
+                      />
+                    )}
+
+                    {/* Invisible hit area for easier interaction */}
                     <circle
                       cx={x}
                       cy={y}
-                      r="4.5"
+                      r="12"
+                      fill="transparent"
+                    />
+
+                    {/* Visual dot */}
+                    <circle
+                      cx={x}
+                      cy={y}
+                      r={isHovered ? "6" : "4.5"}
                       fill="#fff"
                       stroke={strokePointColor}
-                      strokeWidth="2.5"
+                      strokeWidth={isHovered ? "3" : "2.5"}
                     />
+
+                    {/* Popover / Value Tooltip above the dot */}
                     {shouldShowLabel && (
+                      <g>
+                        {isHovered && (
+                          <rect
+                            x={Math.max(10, Math.min(chartWidth - 110, x - 55))}
+                            y={Math.max(5, y - 42)}
+                            width="110"
+                            height="34"
+                            rx="8"
+                            fill="#0f172a"
+                            opacity="0.92"
+                          />
+                        )}
+                        {isHovered ? (
+                          <>
+                            <text
+                              x={Math.max(65, Math.min(chartWidth - 55, x))}
+                              y={Math.max(19, y - 28)}
+                              textAnchor="middle"
+                              fill="#94a3b8"
+                              fontSize="9"
+                              fontWeight="600"
+                            >
+                              {d.label}
+                            </text>
+                            <text
+                              x={Math.max(65, Math.min(chartWidth - 55, x))}
+                              y={Math.max(32, y - 15)}
+                              textAnchor="middle"
+                              fill="#fff"
+                              fontSize="10.5"
+                              fontWeight="800"
+                            >
+                              {metricTab === 'revenue'
+                                ? `$${(d[currentMetricKey] || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                : d[currentMetricKey]?.toLocaleString('id-ID')}
+                            </text>
+                          </>
+                        ) : (
+                          <text
+                            x={x}
+                            y={y - 10}
+                            textAnchor="middle"
+                            fill="var(--text-main)"
+                            fontSize="9.5"
+                            fontWeight="700"
+                          >
+                            {metricTab === 'revenue'
+                              ? `$${(d[currentMetricKey] || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              : d[currentMetricKey]?.toLocaleString('id-ID')}
+                          </text>
+                        )}
+                      </g>
+                    )}
+
+                    {/* X-Axis aligned date text directly under coordinate x */}
+                    {isDateTick && (
                       <text
                         x={x}
-                        y={y - 10}
-                        textAnchor="middle"
-                        fill="var(--text-main)"
+                        y={chartHeight + 20}
+                        textAnchor={i === 0 ? 'start' : (i === chartData.length - 1 ? 'end' : 'middle')}
+                        fill={isHovered ? 'var(--text-main)' : 'var(--text-muted)'}
                         fontSize="9.5"
-                        fontWeight="700"
+                        fontWeight={isHovered ? "800" : "600"}
                       >
-                        {metricTab === 'revenue'
-                          ? `$${(d[currentMetricKey] || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                          : d[currentMetricKey]?.toLocaleString('id-ID')}
+                        {d.label}
                       </text>
                     )}
                   </g>
                 );
               })}
             </svg>
-
-            {/* X-Axis Labels */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.8rem', padding: '0 5px' }}>
-              {chartData.filter((_, idx) => idx % Math.ceil(chartData.length / 7) === 0 || idx === chartData.length - 1).map((d, i) => (
-                <span key={i} style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                  {d.label}
-                </span>
-              ))}
-            </div>
           </div>
         </div>
       </div>
