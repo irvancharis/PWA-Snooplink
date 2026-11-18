@@ -172,9 +172,9 @@ const Dashboard = ({ posts: allPosts = [], accounts = [], user }) => {
   const minVal = Math.min(...values) >= 0 ? 0 : Math.min(...values);
   const maxVal = Math.max(...values) > 0 ? Math.max(...values) * 1.15 : 10;
   
-  // Padding horizontal agar titik awal dan akhir tidak terpotong tepi SVG
-  const padX = 30;
-  const chartHeight = 280;
+  // Padding horizontal presisi agar garis langsung menyentuh pinggir box
+  const padX = 12;
+  const chartHeight = 320;
   const chartWidth = 1000;
   const usableWidth = chartWidth - padX * 2;
 
@@ -429,10 +429,11 @@ const Dashboard = ({ posts: allPosts = [], accounts = [], user }) => {
 
         {/* SVG Dynamic Area Chart with Live Data */}
         <div style={{ width: '100%', overflowX: 'auto', margin: '0 -0.5rem' }}>
-          <div style={{ minWidth: '850px', position: 'relative', width: '100%' }}>
+          <div style={{ width: '100%', position: 'relative' }}>
             <svg 
               viewBox={`0 0 ${chartWidth} ${chartHeight + 35}`} 
-              style={{ width: '100%', height: '320px', overflow: 'visible', display: 'block' }}
+              preserveAspectRatio="none"
+              style={{ width: '100%', height: '360px', overflow: 'visible', display: 'block' }}
               onMouseLeave={() => setHoveredPointIndex(null)}
             >
               <defs>
